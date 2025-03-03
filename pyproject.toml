@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rigorous"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "autogen-agentchat>=0.4.7",
+    "autogen-ext[openai,web-surfer]>=0.4.7",
+    "python-dotenv>=1.0.1",
+]
+
+[dependency-groups]
+dev = [
+    "langfuse>=2.59.6",
+    "pytest-asyncio>=0.25.3",
+    "pytest>=8.3.5",
+    "rigorous",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rigorous"]
+
+[tool.hatch.build]
+packages = ["src/rigorous"]
+
+[tool.taskipy.tasks]
+lint = { cmd = "uv run ruff format && uv run pyright", help = "Run linters" }
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
