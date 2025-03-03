@@ -1,10 +1,12 @@
 import json
 import re
-from typing import Type
+from typing import Type, TypeVar
 
 from autogen_core import CancellationToken
 from autogen_core.models import ChatCompletionClient, LLMMessage, UserMessage
 from pydantic import BaseModel, ValidationError
+
+T = TypeVar("T", bound=BaseModel)
 
 REASON_AND_FORMAT_PROMPT = """\
 
@@ -29,7 +31,7 @@ It is important that you output both plain text reasoning AND the json-formatted
 """
 
 
-def _parse_model_from_response(response: str, model: Type[BaseModel]) -> BaseModel:
+def _parse_model_from_response(response: str, model: Type[T]) -> T:
     """Extract the json from the response string."""
     # Use regex to find the JSON block in the response
     json_match = re.search(r"```json\n(.*?)\n```", response, re.DOTALL)
@@ -51,9 +53,9 @@ async def reason_and_output_model(
     model_client: ChatCompletionClient,
     messages: list[LLMMessage],
     cancellation_token: CancellationToken,
-    response_model: Type[BaseModel],
+    response_model: Type[T],
     retries: int = 3,
-) -> BaseModel:
+) -> T:
     reason_and_format_message = REASON_AND_FORMAT_PROMPT.format(
         response_schema=json.dumps(response_model.model_json_schema(), indent=2)
     )

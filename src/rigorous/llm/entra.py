@@ -54,6 +54,7 @@ class ModelDetails(BaseModel):
     info: ModelInfo
     endpoint: str = AZURE_OPENAI_ENDPOINT
     api_version: str = AZURE_OPENAI_API_VERSION
+    api_key: str | None = None
 
 
 MODELS: dict[str, ModelDetails] = {
@@ -114,12 +115,21 @@ def get_model_client(
 ) -> RigorousChatCompletionClient:
     model_details = MODELS[model]
 
-    model_client = AzureOpenAIChatCompletionClient(
-        model=model,
-        azure_endpoint=model_details.endpoint,
-        api_version=model_details.api_version,
-        azure_ad_token_provider=get_aoai_token_provider(),
-    )
+    if model_details.api_key:
+        # Use the API key for authentication
+        model_client = AzureOpenAIChatCompletionClient(
+            model=model,
+            azure_endpoint=model_details.endpoint,
+            api_version=model_details.api_version,
+            api_key=model_details.api_key,
+        )
+    else:
+        model_client = AzureOpenAIChatCompletionClient(
+            model=model,
+            azure_endpoint=model_details.endpoint,
+            api_version=model_details.api_version,
+            azure_ad_token_provider=get_aoai_token_provider(),
+        )
 
     return RigorousChatCompletionClient(
         model_client=model_client,

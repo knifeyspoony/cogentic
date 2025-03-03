@@ -241,7 +241,7 @@ class RigorousOrchestrator(BaseGroupChatManager):
         state = RigorousState(
             message_thread=list(self._message_thread),
             current_turn=self._current_turn,
-            task=self._question,
+            question=self._question,
             fact_sheet=self._fact_sheet,
             plan=self._plan,
             current_hypothesis=self._current_hypothesis,
@@ -288,6 +288,8 @@ class RigorousOrchestrator(BaseGroupChatManager):
             )
         # Reset partially the group chat manager
         self._message_thread.clear()
+
+        assert self._plan and self._fact_sheet
 
         # Choose the next unverified hypothesis
         self._current_hypothesis = next(
@@ -343,7 +345,9 @@ class RigorousOrchestrator(BaseGroupChatManager):
         context = self._thread_to_context()
 
         progress_ledger_prompt = create_progress_ledger_prompt(
-            self._question, self._team_description, self._participant_topic_types
+            question=self._question,
+            team_description=self._team_description,
+            names=self._participant_topic_types,
         )
         context.append(UserMessage(content=progress_ledger_prompt, source=self._name))
         ledger_type = RigorousProgressLedger.with_speakers(
@@ -402,6 +406,7 @@ class RigorousOrchestrator(BaseGroupChatManager):
             )
             return
 
+        assert self._plan and self._fact_sheet
         # Check if we're done with the current hypothesis
         if progress_ledger.is_current_hypothesis_work_complete.answer:
             await self._log_message("Current hypothesis work complete.")
@@ -469,6 +474,8 @@ class RigorousOrchestrator(BaseGroupChatManager):
     ) -> None:
         """Update the task ledger (outer loop) with the latest facts and plan."""
         context = self._thread_to_context()
+
+        assert self._current_hypothesis and self._fact_sheet and self._plan
 
         # Update the facts based on whether we're stalled or not
         if stalled:

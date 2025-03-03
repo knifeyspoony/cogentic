@@ -109,12 +109,12 @@ PROGRESS_LEDGER_PROMPT = PROGRESS_LEDGER_PROMPT_PATH.read_text()
 
 
 def create_progress_ledger_prompt(
-    question: str, team_description: str, names: str
+    question: str, team_description: str, names: list[str]
 ) -> str:
     return PROGRESS_LEDGER_PROMPT.format(
         question=question,
         team_description=team_description,
-        names=names,
+        names="\n".join(names),
         # ledger_format=PROGRESS_LEDGER_EXAMPLE.model_dump_markdown(),
     )
 

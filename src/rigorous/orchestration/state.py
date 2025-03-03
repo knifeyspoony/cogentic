@@ -146,8 +146,8 @@ class RigorousState(BaseGroupChatManagerState):
     """State for the rigorous system."""
 
     question: str = Field(default="")
-    fact_sheet: RigorousFactSheet = Field(default_factory=RigorousFactSheet)
-    plan: RigorousPlan = Field(default_factory=RigorousPlan)
+    fact_sheet: RigorousFactSheet | None = Field(default=None)
+    plan: RigorousPlan | None = Field(default=None)
     current_hypothesis: RigorousHypothesis | None = Field(default=None)
     n_rounds: int = Field(default=0)
     n_stalls: int = Field(default=0)
