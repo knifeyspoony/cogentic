@@ -1,3 +1,4 @@
+import os
 from typing import Any, AsyncGenerator, Mapping, Optional, Sequence, Union
 from uuid import uuid4
 
@@ -28,9 +29,14 @@ class RigorousChatCompletionClient(ChatCompletionClient):
         extra_create_args: Mapping[str, Any] = {},
         cancellation_token: Optional[CancellationToken] = None,
     ) -> CreateResult:
-        context_aware_extra_create_args = {k: v for k, v in extra_create_args.items()}
-        context_aware_extra_create_args["name"] = self.name
-        context_aware_extra_create_args["session_id"] = self.session_id
+        if os.environ.get("LANGFUSE_HOST"):
+            context_aware_extra_create_args = {
+                k: v for k, v in extra_create_args.items()
+            }
+            context_aware_extra_create_args["name"] = self.name
+            context_aware_extra_create_args["session_id"] = self.session_id
+        else:
+            context_aware_extra_create_args = extra_create_args
 
         # Call model client
         result = await self.model_client.create(
@@ -53,9 +59,14 @@ class RigorousChatCompletionClient(ChatCompletionClient):
         extra_create_args: Mapping[str, Any] = {},
         cancellation_token: Optional[CancellationToken] = None,
     ) -> AsyncGenerator[Union[str, CreateResult], None]:
-        context_aware_extra_create_args = {k: v for k, v in extra_create_args.items()}
-        context_aware_extra_create_args["name"] = self.name
-        context_aware_extra_create_args["session_id"] = self.session_id
+        if os.environ.get("LANGFUSE_HOST"):
+            context_aware_extra_create_args = {
+                k: v for k, v in extra_create_args.items()
+            }
+            context_aware_extra_create_args["name"] = self.name
+            context_aware_extra_create_args["session_id"] = self.session_id
+        else:
+            context_aware_extra_create_args = extra_create_args
 
         # Yield from model client
         async for result in self.model_client.create_stream(

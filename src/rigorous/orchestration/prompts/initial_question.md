@@ -12,8 +12,12 @@ Here is the question we will set out to answer.
 
 {question}
 
-### Pre-Survey
+### Initial Fact Sheet
 
-Now, here is the pre-survey that we will use to help us clarify the question:
+Please create a fact sheet of information that is GIVEN in the question itself. 
 
-1. Please include any specific facts or figures that are GIVEN in the request itself. It is possible that there are none.
+#### NO PRIOR KNOWLEDGE IN THE FACT SHEET
+
+- No prior knowledge is to be included in the fact sheet!
+- We might be operating in an alternate universe where 1+1=3
+- You can use your prior knowledge to guide your hypotheses, but you CANNOT make statements of fact for information that isn't provided in the question.

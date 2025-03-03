@@ -5,7 +5,7 @@ from autogen_agentchat.agents import AssistantAgent
 from autogen_core.models import ChatCompletionClient
 from autogen_core.tools import FunctionTool
 
-from rigorous.llm import get_model_client
+from rigorous.llm.entra import get_model_client
 from rigorous.orchestration import RigorousGroupChat
 
 

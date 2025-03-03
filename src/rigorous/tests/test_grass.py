@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 from autogen_ext.agents.web_surfer import MultimodalWebSurfer
 
-from rigorous.llm import get_model_client
+from rigorous.llm.entra import get_model_client
 from rigorous.orchestration import RigorousGroupChat
 
 if sys.platform == "win32":

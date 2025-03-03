@@ -41,8 +41,8 @@ from autogen_core.models import (
     LLMMessage,
     UserMessage,
 )
-from pydantic import ValidationError
 
+from rigorous.orchestration.model_output import reason_and_output_model
 from rigorous.orchestration.prompts import (
     create_final_answer_prompt,
     create_hypothesis_prompt,
@@ -151,46 +151,61 @@ class RigorousOrchestrator(BaseGroupChatManager):
         )
         planning_conversation: List[LLMMessage] = []
 
-        # 1. GATHER FACTS
-        # Create a fact sheet containing provided,
+        # Fact sheet
         planning_conversation.append(
             UserMessage(
                 content=create_initial_question_prompt(self._question),
                 source=self._name,
             )
         )
-        response = await self._model_client.create(
+        self._fact_sheet = await reason_and_output_model(
+            self._model_client,
             self._get_compatible_context(planning_conversation),
-            cancellation_token=ctx.cancellation_token,
-            extra_create_args={"response_format": RigorousFactSheet},
+            ctx.cancellation_token,
+            response_model=RigorousFactSheet,
         )
+        assert isinstance(self._fact_sheet, RigorousFactSheet)
 
-        assert isinstance(response.content, str)
-        self._fact_sheet = RigorousFactSheet.model_validate_json(response.content)
-        planning_conversation.append(
-            AssistantMessage(
-                content=self._fact_sheet.model_dump_markdown(),
-                source=self._name,
-            )
-        )
+        # self._model_client.create(
+        #     self._get_compatible_context(planning_conversation),
+        #     cancellation_token=ctx.cancellation_token,
+        #     extra_create_args={"response_format": RigorousFactSheet},
+        # )
 
-        # 2. CREATE A PLAN
-        ## plan based on available information
+        # assert isinstance(response.content, str)
+        # self._fact_sheet = RigorousFactSheet.model_validate_json(response.content)
+        # planning_conversation.append(
+        #     AssistantMessage(
+        #         content=self._fact_sheet.model_dump_markdown(),
+        #         source=self._name,
+        #     )
+        # )
+
+        # Plan
         planning_conversation.append(
             UserMessage(
                 content=create_initial_plan_prompt(self._team_description),
                 source=self._name,
             )
         )
-        response = await self._model_client.create(
+
+        self._plan = await reason_and_output_model(
+            self._model_client,
             self._get_compatible_context(planning_conversation),
-            cancellation_token=ctx.cancellation_token,
-            extra_create_args={"response_format": RigorousPlan},
+            ctx.cancellation_token,
+            response_model=RigorousPlan,
         )
+        assert isinstance(self._plan, RigorousPlan)
 
-        assert isinstance(response.content, str)
+        # response = await self._model_client.create(
+        #     self._get_compatible_context(planning_conversation),
+        #     cancellation_token=ctx.cancellation_token,
+        #     extra_create_args={"response_format": RigorousPlan},
+        # )
 
-        self._plan = RigorousPlan.model_validate_json(response.content)
+        # assert isinstance(response.content, str)
+
+        # self._plan = RigorousPlan.model_validate_json(response.content)
 
         # Kick things off
         self._n_stalls = 0
@@ -338,24 +353,41 @@ class RigorousOrchestrator(BaseGroupChatManager):
         key_error: bool = False
         progress_ledger: RigorousProgressLedger | None = None
         for _ in range(self._max_json_retries):
-            response = await self._model_client.create(
-                self._get_compatible_context(context),
-                extra_create_args={"response_format": ledger_type},
-                cancellation_token=cancellation_token,
-            )
-            ledger_str = response.content
             try:
-                assert isinstance(ledger_str, str)
-                progress_ledger = ledger_type.model_validate_json(ledger_str)
+                progress_ledger = await reason_and_output_model(
+                    self._model_client,
+                    self._get_compatible_context(context),
+                    cancellation_token=cancellation_token,
+                    response_model=ledger_type,
+                )
+                assert isinstance(progress_ledger, ledger_type)
                 key_error = False
                 break
-
-            except (ValidationError, TypeError):
+            except Exception:
                 key_error = True
                 await self._log_message(
                     "Invalid ledger format encountered, retrying..."
                 )
                 continue
+
+            # response = await self._model_client.create(
+            #     self._get_compatible_context(context),
+            #     extra_create_args={"response_format": ledger_type},
+            #     cancellation_token=cancellation_token,
+            # )
+            # ledger_str = response.content
+            # try:
+            #     assert isinstance(ledger_str, str)
+            #     progress_ledger = ledger_type.model_validate_json(ledger_str)
+            #     key_error = False
+            #     break
+
+            # except (ValidationError, TypeError):
+            #     key_error = True
+            #     await self._log_message(
+            #         "Invalid ledger format encountered, retrying..."
+            #     )
+            #     continue
         if key_error or progress_ledger is None:
             raise ValueError(
                 "Failed to parse ledger information after multiple retries."
@@ -449,14 +481,23 @@ class RigorousOrchestrator(BaseGroupChatManager):
             )
         context.append(UserMessage(content=update_facts_prompt, source=self._name))
 
-        response = await self._model_client.create(
+        self._fact_sheet = await reason_and_output_model(
+            self._model_client,
             self._get_compatible_context(context),
             cancellation_token=cancellation_token,
-            extra_create_args={"response_format": RigorousFactSheet},
+            response_model=RigorousFactSheet,
         )
+        assert isinstance(self._fact_sheet, RigorousFactSheet)
 
-        assert isinstance(response.content, str)
-        self._fact_sheet = RigorousFactSheet.model_validate_json(response.content)
+        # response = await self._model_client.create(
+        #     self._get_compatible_context(context),
+        #     cancellation_token=cancellation_token,
+        #     extra_create_args={"response_format": RigorousFactSheet},
+        # )
+
+        # assert isinstance(response.content, str)
+        # self._fact_sheet = RigorousFactSheet.model_validate_json(response.content)
+
         context.append(
             AssistantMessage(
                 content=self._fact_sheet.model_dump_markdown(), source=self._name
@@ -482,14 +523,22 @@ class RigorousOrchestrator(BaseGroupChatManager):
             )
         context.append(UserMessage(content=update_plan_prompt, source=self._name))
 
-        response = await self._model_client.create(
+        self._plan = await reason_and_output_model(
+            self._model_client,
             self._get_compatible_context(context),
             cancellation_token=cancellation_token,
-            extra_create_args={"response_format": RigorousPlan},
+            response_model=RigorousPlan,
         )
+        assert isinstance(self._plan, RigorousPlan)
 
-        assert isinstance(response.content, str)
-        self._plan = RigorousPlan.model_validate_json(response.content)
+        # response = await self._model_client.create(
+        #     self._get_compatible_context(context),
+        #     cancellation_token=cancellation_token,
+        #     extra_create_args={"response_format": RigorousPlan},
+        # )
+
+        # assert isinstance(response.content, str)
+        # self._plan = RigorousPlan.model_validate_json(response.content)
 
     async def _prepare_final_answer(
         self, reason: str, cancellation_token: CancellationToken
@@ -501,13 +550,21 @@ class RigorousOrchestrator(BaseGroupChatManager):
         final_answer_prompt = create_final_answer_prompt(self._question)
         context.append(UserMessage(content=final_answer_prompt, source=self._name))
 
-        response = await self._model_client.create(
+        final_answer = await reason_and_output_model(
+            self._model_client,
             self._get_compatible_context(context),
             cancellation_token=cancellation_token,
-            extra_create_args={"response_format": RigorousFinalAnswer},
+            response_model=RigorousFinalAnswer,
         )
-        assert isinstance(response.content, str)
-        final_answer = RigorousFinalAnswer.model_validate_json(response.content)
+        assert isinstance(final_answer, RigorousFinalAnswer)
+
+        # response = await self._model_client.create(
+        #     self._get_compatible_context(context),
+        #     cancellation_token=cancellation_token,
+        #     extra_create_args={"response_format": RigorousFinalAnswer},
+        # )
+        # assert isinstance(response.content, str)
+        # final_answer = RigorousFinalAnswer.model_validate_json(response.content)
 
         message = TextMessage(
             content=final_answer.model_dump_markdown(), source=self._name

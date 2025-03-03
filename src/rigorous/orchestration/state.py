@@ -133,10 +133,13 @@ class RigorousFinalAnswer(RigorousBaseModel):
     """Final answer for the rigorous system."""
 
     result: str = Field(description="The result of our work")
+    completed_by_team_members: bool = Field(
+        description="Whether the answer was completed by team members or by yourself"
+    )
     status: Literal["complete", "incomplete"] = Field(
         description="Whether we were able to fully answer the question"
     )
-    reason: str | None = Field(description="Reason for the status if incomplete")
+    reason: str | None = Field(description="Reason for the status (if incomplete)")
 
 
 class RigorousState(BaseGroupChatManagerState):
