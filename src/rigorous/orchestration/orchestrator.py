@@ -56,6 +56,7 @@ from rigorous.orchestration.prompts import (
 )
 from rigorous.orchestration.state import (
     RigorousFactSheet,
+    RigorousFinalAnswer,
     RigorousHypothesis,
     RigorousPlan,
     RigorousProgressLedger,
@@ -501,10 +502,16 @@ class RigorousOrchestrator(BaseGroupChatManager):
         context.append(UserMessage(content=final_answer_prompt, source=self._name))
 
         response = await self._model_client.create(
-            self._get_compatible_context(context), cancellation_token=cancellation_token
+            self._get_compatible_context(context),
+            cancellation_token=cancellation_token,
+            extra_create_args={"response_format": RigorousFinalAnswer},
         )
         assert isinstance(response.content, str)
-        message = TextMessage(content=response.content, source=self._name)
+        final_answer = RigorousFinalAnswer.model_validate_json(response.content)
+
+        message = TextMessage(
+            content=final_answer.model_dump_markdown(), source=self._name
+        )
 
         self._message_thread.append(message)  # My copy
 

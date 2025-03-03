@@ -1,12 +1,14 @@
 ## Final Answer
 
-We are working on the following question:
+We are finished our work on the following question:
 
 {question}
 
-We have answered the question.
+Consider the previous messages; did we come to a final answer through the team conversation? 
 
-The above messages contain the conversation that took place to answer the question.
+- If so, respond with that final answer.
+- If not, THAT'S OK, let the user know that the results are incomplete, and summarize why we weren't able to come to a final answer.
 
-Based on the information gathered, provide the final answer to the original request.
-The answer should be phrased as if you were speaking to the user.
+### CRITICALLY IMPORTANT NOTE
+
+It's very important that you do not make up an answer if the previous messages don't have verified evidence to support it. Failure is OK.

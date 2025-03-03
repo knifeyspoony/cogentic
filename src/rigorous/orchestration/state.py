@@ -129,6 +129,16 @@ class RigorousProgressLedger(RigorousBaseModel):
         )
 
 
+class RigorousFinalAnswer(RigorousBaseModel):
+    """Final answer for the rigorous system."""
+
+    result: str = Field(description="The result of our work")
+    status: Literal["complete", "incomplete"] = Field(
+        description="Whether we were able to fully answer the question"
+    )
+    reason: str | None = Field(description="Reason for the status if incomplete")
+
+
 class RigorousState(BaseGroupChatManagerState):
     """State for the rigorous system."""
 

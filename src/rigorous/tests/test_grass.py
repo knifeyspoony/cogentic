@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import sys
 from datetime import datetime
 
@@ -33,4 +34,5 @@ async def test_rigorous_group_chat():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(test_rigorous_group_chat())
