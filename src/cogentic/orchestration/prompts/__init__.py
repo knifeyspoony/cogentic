@@ -1,4 +1,4 @@
-from rigorous.orchestration.prompts.prompts import (
+from cogentic.orchestration.prompts.prompts import (
     create_final_answer_prompt,
     create_hypothesis_prompt,
     create_initial_plan_prompt,

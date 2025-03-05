@@ -1,9 +1,8 @@
 import os
 import sys
 
+from cogentic.observability.client import CogenticChatCompletionClient
 from dotenv import load_dotenv
-
-from rigorous.observability.client import RigorousChatCompletionClient
 
 load_dotenv()
 
@@ -17,4 +16,4 @@ if os.environ.get("LANGFUSE_HOST"):
     sys.modules["openai"] = openai
 
 
-__all__ = ["RigorousChatCompletionClient"]
+__all__ = ["CogenticChatCompletionClient"]

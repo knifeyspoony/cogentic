@@ -6,9 +6,8 @@ from autogen_core.models import ModelInfo
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 from azure.core.credentials import AccessToken
 from azure.identity.aio import AzureCliCredential
+from cogentic.observability import CogenticChatCompletionClient
 from pydantic import BaseModel
-
-from rigorous.observability import RigorousChatCompletionClient
 
 BASE_CREDENTIAL = AzureCliCredential()
 
@@ -112,7 +111,7 @@ def get_model_client(
     model: str,
     name: str | None = None,
     session_id: str | None = None,
-) -> RigorousChatCompletionClient:
+) -> CogenticChatCompletionClient:
     model_details = MODELS[model]
 
     if model_details.api_key:
@@ -131,7 +130,7 @@ def get_model_client(
             azure_ad_token_provider=get_aoai_token_provider(),
         )
 
-    return RigorousChatCompletionClient(
+    return CogenticChatCompletionClient(
         model_client=model_client,
         name=name or model_details.name,
         session_id=session_id,

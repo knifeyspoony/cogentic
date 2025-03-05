@@ -2,9 +2,8 @@ import os
 
 from autogen_core.models import ModelInfo
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
+from cogentic.observability import CogenticChatCompletionClient
 from pydantic import BaseModel
-
-from rigorous.observability import RigorousChatCompletionClient
 
 AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_API_VERSION = os.environ.get("OPENAI_API_VERSION")
@@ -74,7 +73,7 @@ def get_model_client(
     model: str,
     name: str | None = None,
     session_id: str | None = None,
-) -> RigorousChatCompletionClient:
+) -> CogenticChatCompletionClient:
     model_details = MODELS[model]
 
     model_client = AzureOpenAIChatCompletionClient(
@@ -84,7 +83,7 @@ def get_model_client(
         api_key=model_details.api_key,
     )
 
-    return RigorousChatCompletionClient(
+    return CogenticChatCompletionClient(
         model_client=model_client,
         name=name or model_details.name,
         session_id=session_id,

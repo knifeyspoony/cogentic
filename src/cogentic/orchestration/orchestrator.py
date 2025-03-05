@@ -41,9 +41,16 @@ from autogen_core.models import (
     LLMMessage,
     UserMessage,
 )
-
-from rigorous.orchestration.model_output import reason_and_output_model
-from rigorous.orchestration.prompts import (
+from cogentic.orchestration.model_output import reason_and_output_model
+from cogentic.orchestration.models import (
+    CogenticFactSheet,
+    CogenticFinalAnswer,
+    CogenticHypothesis,
+    CogenticPlan,
+    CogenticProgressLedger,
+    CogenticState,
+)
+from cogentic.orchestration.prompts import (
     create_final_answer_prompt,
     create_hypothesis_prompt,
     create_initial_plan_prompt,
@@ -54,20 +61,12 @@ from rigorous.orchestration.prompts import (
     create_update_plan_on_completion_prompt,
     create_update_plan_on_stall_prompt,
 )
-from rigorous.orchestration.state import (
-    RigorousFactSheet,
-    RigorousFinalAnswer,
-    RigorousHypothesis,
-    RigorousPlan,
-    RigorousProgressLedger,
-    RigorousState,
-)
 
 trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
 
 
-class RigorousOrchestrator(BaseGroupChatManager):
-    """The RigorousOrchestrator manages a group chat with hypothesis validation."""
+class CogenticOrchestrator(BaseGroupChatManager):
+    """The CogenticOrchestrator manages a group chat with hypothesis validation."""
 
     def __init__(
         self,
@@ -92,12 +91,12 @@ class RigorousOrchestrator(BaseGroupChatManager):
         self._model_client = model_client
         self._max_stalls = max_stalls
         self._final_answer_prompt = final_answer_prompt
-        self._name = "RigorousOrchestrator"
+        self._name = "CogenticOrchestrator"
         self._max_json_retries = 10
         self._question = ""
-        self._plan: RigorousPlan | None = None
-        self._fact_sheet: RigorousFactSheet | None = None
-        self._current_hypothesis: RigorousHypothesis | None = None
+        self._plan: CogenticPlan | None = None
+        self._fact_sheet: CogenticFactSheet | None = None
+        self._current_hypothesis: CogenticHypothesis | None = None
         self._n_rounds = 0
         self._n_stalls = 0
 
@@ -162,24 +161,9 @@ class RigorousOrchestrator(BaseGroupChatManager):
             self._model_client,
             self._get_compatible_context(planning_conversation),
             ctx.cancellation_token,
-            response_model=RigorousFactSheet,
+            response_model=CogenticFactSheet,
         )
-        assert isinstance(self._fact_sheet, RigorousFactSheet)
-
-        # self._model_client.create(
-        #     self._get_compatible_context(planning_conversation),
-        #     cancellation_token=ctx.cancellation_token,
-        #     extra_create_args={"response_format": RigorousFactSheet},
-        # )
-
-        # assert isinstance(response.content, str)
-        # self._fact_sheet = RigorousFactSheet.model_validate_json(response.content)
-        # planning_conversation.append(
-        #     AssistantMessage(
-        #         content=self._fact_sheet.model_dump_markdown(),
-        #         source=self._name,
-        #     )
-        # )
+        assert isinstance(self._fact_sheet, CogenticFactSheet)
 
         # Plan
         planning_conversation.append(
@@ -193,21 +177,10 @@ class RigorousOrchestrator(BaseGroupChatManager):
             self._model_client,
             self._get_compatible_context(planning_conversation),
             ctx.cancellation_token,
-            response_model=RigorousPlan,
+            response_model=CogenticPlan,
         )
-        assert isinstance(self._plan, RigorousPlan)
+        assert isinstance(self._plan, CogenticPlan)
 
-        # response = await self._model_client.create(
-        #     self._get_compatible_context(planning_conversation),
-        #     cancellation_token=ctx.cancellation_token,
-        #     extra_create_args={"response_format": RigorousPlan},
-        # )
-
-        # assert isinstance(response.content, str)
-
-        # self._plan = RigorousPlan.model_validate_json(response.content)
-
-        # Kick things off
         self._n_stalls = 0
         await self._reenter_outer_loop(ctx.cancellation_token)
 
@@ -238,7 +211,7 @@ class RigorousOrchestrator(BaseGroupChatManager):
         pass
 
     async def save_state(self) -> Mapping[str, Any]:
-        state = RigorousState(
+        state = CogenticState(
             message_thread=list(self._message_thread),
             current_turn=self._current_turn,
             question=self._question,
@@ -251,7 +224,7 @@ class RigorousOrchestrator(BaseGroupChatManager):
         return state.model_dump()
 
     async def load_state(self, state: Mapping[str, Any]) -> None:
-        orchestrator_state = RigorousState.model_validate(state)
+        orchestrator_state = CogenticState.model_validate(state)
         self._message_thread = orchestrator_state.message_thread
         self._current_turn = orchestrator_state.current_turn
         self._question = orchestrator_state.question
@@ -278,7 +251,7 @@ class RigorousOrchestrator(BaseGroupChatManager):
         self._current_hypothesis = None
 
     async def _reenter_outer_loop(self, cancellation_token: CancellationToken) -> None:
-        """Re-enter Outer loop of the orchestrator after creating task ledger."""
+        """Re-enter Outer loop of the orchestrator after identifying facts and creating a plan."""
         # Reset the agents
         for participant_topic_type in self._participant_topic_types:
             await self._runtime.send_message(
@@ -350,12 +323,12 @@ class RigorousOrchestrator(BaseGroupChatManager):
             names=self._participant_topic_types,
         )
         context.append(UserMessage(content=progress_ledger_prompt, source=self._name))
-        ledger_type = RigorousProgressLedger.with_speakers(
+        ledger_type = CogenticProgressLedger.with_speakers(
             self._participant_topic_types
         )
         assert self._max_json_retries > 0
         key_error: bool = False
-        progress_ledger: RigorousProgressLedger | None = None
+        progress_ledger: CogenticProgressLedger | None = None
         for _ in range(self._max_json_retries):
             try:
                 progress_ledger = await reason_and_output_model(
@@ -374,24 +347,6 @@ class RigorousOrchestrator(BaseGroupChatManager):
                 )
                 continue
 
-            # response = await self._model_client.create(
-            #     self._get_compatible_context(context),
-            #     extra_create_args={"response_format": ledger_type},
-            #     cancellation_token=cancellation_token,
-            # )
-            # ledger_str = response.content
-            # try:
-            #     assert isinstance(ledger_str, str)
-            #     progress_ledger = ledger_type.model_validate_json(ledger_str)
-            #     key_error = False
-            #     break
-
-            # except (ValidationError, TypeError):
-            #     key_error = True
-            #     await self._log_message(
-            #         "Invalid ledger format encountered, retrying..."
-            #     )
-            #     continue
         if key_error or progress_ledger is None:
             raise ValueError(
                 "Failed to parse ledger information after multiple retries."
@@ -410,8 +365,6 @@ class RigorousOrchestrator(BaseGroupChatManager):
         # Check if we're done with the current hypothesis
         if progress_ledger.is_current_hypothesis_work_complete.answer:
             await self._log_message("Current hypothesis work complete.")
-            # Update the ledger
-
             # Move on to the next unverified hypothesis
             self._current_hypothesis = next(
                 (h for h in self._plan.hypotheses if h.state == "unverified"), None
@@ -423,6 +376,8 @@ class RigorousOrchestrator(BaseGroupChatManager):
                 await self._prepare_final_answer(
                     "All hypotheses verified.", cancellation_token
                 )
+                # Finished!
+                return
 
         # Check for stalling
         if not progress_ledger.is_progress_being_made.answer:
@@ -437,7 +392,7 @@ class RigorousOrchestrator(BaseGroupChatManager):
             await self._log_message(
                 "Stall count exceeded, re-planning with the outer loop..."
             )
-            await self._update_task_ledger(cancellation_token, stalled=True)
+            await self._update_facts_and_plan(cancellation_token, stalled=True)
             await self._reenter_outer_loop(cancellation_token)
             return
 
@@ -469,10 +424,10 @@ class RigorousOrchestrator(BaseGroupChatManager):
             cancellation_token=cancellation_token,
         )
 
-    async def _update_task_ledger(
+    async def _update_facts_and_plan(
         self, cancellation_token: CancellationToken, stalled=False
     ) -> None:
-        """Update the task ledger (outer loop) with the latest facts and plan."""
+        """Update the facts and plan based on the current state."""
         context = self._thread_to_context()
 
         assert self._current_hypothesis and self._fact_sheet and self._plan
@@ -492,18 +447,9 @@ class RigorousOrchestrator(BaseGroupChatManager):
             self._model_client,
             self._get_compatible_context(context),
             cancellation_token=cancellation_token,
-            response_model=RigorousFactSheet,
+            response_model=CogenticFactSheet,
         )
-        assert isinstance(self._fact_sheet, RigorousFactSheet)
-
-        # response = await self._model_client.create(
-        #     self._get_compatible_context(context),
-        #     cancellation_token=cancellation_token,
-        #     extra_create_args={"response_format": RigorousFactSheet},
-        # )
-
-        # assert isinstance(response.content, str)
-        # self._fact_sheet = RigorousFactSheet.model_validate_json(response.content)
+        assert isinstance(self._fact_sheet, CogenticFactSheet)
 
         context.append(
             AssistantMessage(
@@ -534,18 +480,9 @@ class RigorousOrchestrator(BaseGroupChatManager):
             self._model_client,
             self._get_compatible_context(context),
             cancellation_token=cancellation_token,
-            response_model=RigorousPlan,
+            response_model=CogenticPlan,
         )
-        assert isinstance(self._plan, RigorousPlan)
-
-        # response = await self._model_client.create(
-        #     self._get_compatible_context(context),
-        #     cancellation_token=cancellation_token,
-        #     extra_create_args={"response_format": RigorousPlan},
-        # )
-
-        # assert isinstance(response.content, str)
-        # self._plan = RigorousPlan.model_validate_json(response.content)
+        assert isinstance(self._plan, CogenticPlan)
 
     async def _prepare_final_answer(
         self, reason: str, cancellation_token: CancellationToken
@@ -561,17 +498,9 @@ class RigorousOrchestrator(BaseGroupChatManager):
             self._model_client,
             self._get_compatible_context(context),
             cancellation_token=cancellation_token,
-            response_model=RigorousFinalAnswer,
+            response_model=CogenticFinalAnswer,
         )
-        assert isinstance(final_answer, RigorousFinalAnswer)
-
-        # response = await self._model_client.create(
-        #     self._get_compatible_context(context),
-        #     cancellation_token=cancellation_token,
-        #     extra_create_args={"response_format": RigorousFinalAnswer},
-        # )
-        # assert isinstance(response.content, str)
-        # final_answer = RigorousFinalAnswer.model_validate_json(response.content)
+        assert isinstance(final_answer, CogenticFinalAnswer)
 
         message = TextMessage(
             content=final_answer.model_dump_markdown(), source=self._name

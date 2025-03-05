@@ -6,20 +6,19 @@ from autogen_agentchat.base import ChatAgent, TerminationCondition
 from autogen_agentchat.teams._group_chat._base_group_chat import BaseGroupChat
 from autogen_core import Component, ComponentModel
 from autogen_core.models import ChatCompletionClient
-from pydantic import BaseModel
-from typing_extensions import Self
-
-from rigorous.orchestration.orchestrator import RigorousOrchestrator
-from rigorous.orchestration.prompts.prompts import (
+from cogentic.orchestration.orchestrator import CogenticOrchestrator
+from cogentic.orchestration.prompts.prompts import (
     FINAL_ANSWER_PROMPT as RIGOROUS_FINAL_ANSWER_PROMPT,
 )
+from pydantic import BaseModel
+from typing_extensions import Self
 
 trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
 event_logger = logging.getLogger(EVENT_LOGGER_NAME)
 
 
-class RigorousGroupChatConfig(BaseModel):
-    """The declarative configuration for a RigorousGroupChat."""
+class CogenticGroupChatConfig(BaseModel):
+    """The declarative configuration for a CogenticGroupChat."""
 
     participants: List[ComponentModel]
     model_client: ComponentModel
@@ -29,11 +28,11 @@ class RigorousGroupChatConfig(BaseModel):
     final_answer_prompt: str
 
 
-class RigorousGroupChat(BaseGroupChat, Component[RigorousGroupChatConfig]):
-    """A team that runs a group chat with participants managed by the RigorousOrchestrator."""
+class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
+    """A team that runs a group chat with participants managed by the CogenticOrchestrator."""
 
-    component_config_schema = RigorousGroupChatConfig
-    component_provider_override = "autogen_agentchat.teams.RigorousGroupChat"
+    component_config_schema = CogenticGroupChatConfig
+    component_provider_override = "autogen_agentchat.teams.CogenticGroupChat"
 
     def __init__(
         self,
@@ -47,7 +46,7 @@ class RigorousGroupChat(BaseGroupChat, Component[RigorousGroupChatConfig]):
     ):
         super().__init__(
             participants,
-            group_chat_manager_class=RigorousOrchestrator,
+            group_chat_manager_class=CogenticOrchestrator,
             termination_condition=termination_condition,
             max_turns=max_turns,
         )
@@ -55,7 +54,7 @@ class RigorousGroupChat(BaseGroupChat, Component[RigorousGroupChatConfig]):
         # Validate the participants.
         if len(participants) == 0:
             raise ValueError(
-                "At least one participant is required for RigorousGroupChat."
+                "At least one participant is required for CogenticGroupChat."
             )
         self._model_client = model_client
         self._max_stalls = max_stalls
@@ -69,8 +68,8 @@ class RigorousGroupChat(BaseGroupChat, Component[RigorousGroupChatConfig]):
         participant_descriptions: List[str],
         termination_condition: TerminationCondition | None,
         max_turns: int | None,
-    ) -> Callable[[], RigorousOrchestrator]:
-        return lambda: RigorousOrchestrator(
+    ) -> Callable[[], CogenticOrchestrator]:
+        return lambda: CogenticOrchestrator(
             group_topic_type,
             output_topic_type,
             participant_topic_types,
@@ -82,7 +81,7 @@ class RigorousGroupChat(BaseGroupChat, Component[RigorousGroupChatConfig]):
             termination_condition,
         )
 
-    def _to_config(self) -> RigorousGroupChatConfig:
+    def _to_config(self) -> CogenticGroupChatConfig:
         participants = [
             participant.dump_component() for participant in self._participants
         ]
@@ -91,7 +90,7 @@ class RigorousGroupChat(BaseGroupChat, Component[RigorousGroupChatConfig]):
             if self._termination_condition
             else None
         )
-        return RigorousGroupChatConfig(
+        return CogenticGroupChatConfig(
             participants=participants,
             model_client=self._model_client.dump_component(),
             termination_condition=termination_condition,
@@ -101,7 +100,7 @@ class RigorousGroupChat(BaseGroupChat, Component[RigorousGroupChatConfig]):
         )
 
     @classmethod
-    def _from_config(cls, config: RigorousGroupChatConfig) -> Self:
+    def _from_config(cls, config: CogenticGroupChatConfig) -> Self:
         participants = [
             ChatAgent.load_component(participant) for participant in config.participants
         ]

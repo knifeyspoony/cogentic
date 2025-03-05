@@ -7,7 +7,7 @@ from autogen_core.models import ChatCompletionClient, CreateResult, LLMMessage
 from autogen_core.tools import Tool, ToolSchema
 
 
-class RigorousChatCompletionClient(ChatCompletionClient):
+class CogenticChatCompletionClient(ChatCompletionClient):
     def __init__(
         self,
         model_client: ChatCompletionClient,
