@@ -285,11 +285,10 @@ wheels = [
 
 [[package]]
 name = "cogentic"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "autogen-agentchat" },
-    { name = "python-dotenv" },
 ]
 
 [package.dev-dependencies]
@@ -307,15 +306,12 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "autogen-agentchat", specifier = ">=0.4.7" },
-    { name = "python-dotenv", specifier = ">=1.0.1" },
-]
+requires-dist = [{ name = "autogen-agentchat", specifier = ">=0.4.7" }]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "autogen-ext", extras = ["openai", "web-surfer"], specifier = ">=0.4.7" },
-    { name = "cogentic", editable = "." },
+    { name = "cogentic" },
     { name = "langfuse", specifier = ">=2.59.6" },
     { name = "pyright", specifier = ">=1.1.396" },
     { name = "pytest", specifier = ">=8.3.5" },
