@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cogentic"
-version = "0.1.1"
+version = "0.1.2"
 description = "A hypothesis-based orchestration framework built on AutoGen and based on MagenticOne"
 readme = "README.md"
 authors = [{ name = "knifeyspoony" }]

@@ -6,12 +6,13 @@ from autogen_agentchat.base import ChatAgent, TerminationCondition
 from autogen_agentchat.teams._group_chat._base_group_chat import BaseGroupChat
 from autogen_core import Component, ComponentModel
 from autogen_core.models import ChatCompletionClient
+from pydantic import BaseModel
+from typing_extensions import Self
+
 from cogentic.orchestration.orchestrator import CogenticOrchestrator
 from cogentic.orchestration.prompts.prompts import (
     FINAL_ANSWER_PROMPT as RIGOROUS_FINAL_ANSWER_PROMPT,
 )
-from pydantic import BaseModel
-from typing_extensions import Self
 
 trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
 event_logger = logging.getLogger(EVENT_LOGGER_NAME)
@@ -23,7 +24,9 @@ class CogenticGroupChatConfig(BaseModel):
     participants: List[ComponentModel]
     model_client: ComponentModel
     termination_condition: ComponentModel | None = None
-    max_turns: int | None = None
+    max_turns_total: int | None = None
+    max_turns_per_hypothesis: int | None = None
+    max_turns_per_test: int | None = None
     max_stalls: int
     final_answer_prompt: str
 
@@ -40,7 +43,9 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
         model_client: ChatCompletionClient,
         *,
         termination_condition: TerminationCondition | None = None,
-        max_turns: int | None = 20,
+        max_turns_total: int | None = 128,
+        max_turns_per_hypothesis: int | None = 32,
+        max_turns_per_test: int | None = 8,
         max_stalls: int = 3,
         final_answer_prompt: str = RIGOROUS_FINAL_ANSWER_PROMPT,
     ):
@@ -48,7 +53,7 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
             participants,
             group_chat_manager_class=CogenticOrchestrator,
             termination_condition=termination_condition,
-            max_turns=max_turns,
+            max_turns=max_turns_total,
         )
 
         # Validate the participants.
@@ -58,6 +63,8 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
             )
         self._model_client = model_client
         self._max_stalls = max_stalls
+        self._max_turns_per_hypothesis = max_turns_per_hypothesis
+        self._max_turns_per_test = max_turns_per_test
         self._final_answer_prompt = final_answer_prompt
 
     def _create_group_chat_manager_factory(
@@ -70,15 +77,16 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
         max_turns: int | None,
     ) -> Callable[[], CogenticOrchestrator]:
         return lambda: CogenticOrchestrator(
-            group_topic_type,
-            output_topic_type,
-            participant_topic_types,
-            participant_descriptions,
-            max_turns,
-            self._model_client,
-            self._max_stalls,
-            self._final_answer_prompt,
-            termination_condition,
+            group_topic_type=group_topic_type,
+            output_topic_type=output_topic_type,
+            participant_topic_types=participant_topic_types,
+            participant_descriptions=participant_descriptions,
+            model_client=self._model_client,
+            max_turns_total=max_turns,
+            max_turns_per_hypothesis=self._max_turns_per_hypothesis,
+            max_turns_per_test=self._max_turns_per_test,
+            max_stalls=self._max_stalls,
+            final_answer_prompt=self._final_answer_prompt,
         )
 
     def _to_config(self) -> CogenticGroupChatConfig:
@@ -94,7 +102,8 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
             participants=participants,
             model_client=self._model_client.dump_component(),
             termination_condition=termination_condition,
-            max_turns=self._max_turns,
+            max_turns_total=self._max_turns,
+            max_turns_per_hypothesis=self._max_turns_per_hypothesis,
             max_stalls=self._max_stalls,
             final_answer_prompt=self._final_answer_prompt,
         )
@@ -114,7 +123,9 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
             participants,
             model_client,
             termination_condition=termination_condition,
-            max_turns=config.max_turns,
+            max_turns_total=config.max_turns_total,
+            max_turns_per_hypothesis=config.max_turns_per_hypothesis,
+            max_turns_per_test=config.max_turns_per_test,
             max_stalls=config.max_stalls,
             final_answer_prompt=config.final_answer_prompt,
         )

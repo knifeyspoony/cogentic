@@ -5,6 +5,7 @@ import pytest
 from autogen_agentchat.agents import AssistantAgent
 from autogen_core.models import ChatCompletionClient
 from autogen_core.tools import FunctionTool
+
 from cogentic.llm.entra import get_model_client
 from cogentic.orchestration import CogenticGroupChat
 
@@ -38,7 +39,8 @@ async def test_cogentic_group_chat():
     team = CogenticGroupChat(
         participants=[assistant],
         model_client=orchestrator_model,
-        max_turns=10,
+        max_turns_total=32,
+        max_turns_per_hypothesis=8,
         max_stalls=3,
     )
 

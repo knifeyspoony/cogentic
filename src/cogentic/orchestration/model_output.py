@@ -26,9 +26,34 @@ Here is the SCHEMA of the response format. Note that you need to create an insta
 
 ### Note
 
-It is important that you output both plain text reasoning AND the json-formatted code block adhering to the schema.
+It is important that you output both plain text reasoning AND the json-formatted code block adhering to the schema. Make sure to wrap your json in markdown tags, e.g.:
+
+```json
+... your json content here ...
+```
 
 """
+
+RETRY_MESSAGE = """\
+
+## Response Format Error
+
+We were unable to parse the JSON output from your response. The output was not in the expected format. 
+
+### Error
+
+The error was {error}
+
+Please try to adjust the JSON and respond correctly.
+"""
+
+
+class CogenticOutputParsingError(Exception):
+    """Exception raised for errors in the output parsing."""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(self.message)
 
 
 def _parse_model_from_response(response: str, model: Type[T]) -> T:
@@ -40,13 +65,13 @@ def _parse_model_from_response(response: str, model: Type[T]) -> T:
         try:
             return model.model_validate_json(json_str)
         except ValidationError as e:
-            raise ValueError(
-                f"Failed to parse JSON response: {e}.\n"
-                f"Response: {response}\n"
-                f"JSON string: {json_str}"
+            raise CogenticOutputParsingError(
+                message=f"Failed to parse provided JSON: {e}.\n"
             )
     else:
-        raise ValueError("No JSON block found in the response.")
+        raise CogenticOutputParsingError(
+            message="Failed to find JSON block in the response."
+        )
 
 
 async def reason_and_output_model(
@@ -64,20 +89,27 @@ async def reason_and_output_model(
     ]
 
     errors = []
+    retry_messages = create_messages[:]
     for _ in range(retries):
+        response = await model_client.create(
+            messages=retry_messages,
+            cancellation_token=cancellation_token,
+        )
+        assert isinstance(response.content, str)
         try:
-            response = await model_client.create(
-                messages=create_messages,
-                cancellation_token=cancellation_token,
-            )
-            assert isinstance(response.content, str)
             return _parse_model_from_response(
                 response.content,
                 response_model,
             )
-        except ValueError as e:
-            errors.append(e)
-            continue
+        except CogenticOutputParsingError as e:
+            # We don't want to include multiple error messages in the retry
+            retry_messages = create_messages[:]
+            retry_message = RETRY_MESSAGE.format(
+                response=response.content,
+                error=e.message,
+            )
+            retry_messages.append(UserMessage(content=retry_message, source="user"))
+
     raise ValueError(
         f"Failed to get a valid response after multiple attempts:\n{errors}"
     )

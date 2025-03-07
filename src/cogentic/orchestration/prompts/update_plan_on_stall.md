@@ -2,49 +2,42 @@
 
 We aren't making as much progress as we would like, and so we may need to revise our plan.
 
-### Question
-
-This is the question we're working on answering:
-
-{question}
-
-### Current Hypothesis
-
-This is the current hypothesis we were working on before getting stuck or failing:
-
-{current_hypothesis}
-
 ### Root Cause
 
 Consider what went wrong on this last run (the root cause of the failure) and adjust the plan accordingly.
 
-### Revise Plan
+### Updating or Completing the Hypothesis
 
-Revise the plan to take steps to overcome prior challenges and especially avoids repeating the same mistakes. As before, the revised plan should be concise and consider our team composition.
+If, based on the current facts and test results, you believe that our work on the current hypothesis is complete (or that it cannot be completed), please mark the state accordingly. We want to be rigorous, but not impossibly pedantic; if the test results give you a moderate amount of confidence in the hypothesis, you can mark it as verified.
 
-#### Unverifiable Hypothesis
+#### State of the Hypothesis
 
-It is completely possible that the current hypothesis is unverifiable given our team composition or team member failures. Some examples:
+You may need to change the state of the hypothesis. Here are the possible states:
 
-- A team member repeatedly fails to complete a given task, and no other team member can step in given their description.
-- Given their descriptions, no team member is qualified to complete a given task.
-- You are considering some kind of manual, physical validation - this is not possible in the current environment; we can only use our 
-  explicitly named team members as resources, and they are restricted to the tools available to them. If you are in this situation, 
-  verify what tools are available by asking your team members, then consider marking the hypothesis as unverifiable if nothing can be done.
+- unverified: the hypothesis has not been verified and you are adding new, viable tests to continue our work
+- verified: the hypothesis has been verified based on the test results and you are marking it as complete
+- unverifiable: the hypothesis cannot be verified due to the current team composition or team member failures
 
-#### Team Composition
+#### Updating Tests
 
-Consider the following team composition when updating the plan (do not involve any other outside people since we cannot contact anyone else):
+- If you are leaving the current hypothesis as unverified, you must add some additional tests that can be completed by our team members to continue our work.
+- If you are abandoning the hypothesis, leave the tests in the abandoned hypothesis as they are so we can review the results later.
 
-{team_description}
+### Updating the Plan
 
-#### Facts
+In completing our work, we may have learned something new. If so, consider modifying our plan to adjust accordingly e.g., if:
 
-Consider the following fact sheet when updating the plan:
+- We learned that a certain approach is not feasible, we may want to remove related work from our plan.
+- We learned that a certain approach is feasible, we may want to add related work to our plan and remove any work that is no longer needed.
+- New facts have come to light as a result of our work, we may want to update our plan accordingly.
 
-{fact_sheet}
+We don't want to remove hypotheses from the plan - if we don't plan to continue work on a hypothesis, just mark it accordingly and potentially create new ones.
 
-#### Previous Plan
+#### Plan Tips
+
+- We can't interact with the physical world, and you're basically limited to whatever functionality your team members have. Keep this in mind when you design hypotheses and tests.
+
+### Previous Plan
 
 Here is the old plan:
 

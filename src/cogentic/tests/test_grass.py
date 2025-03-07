@@ -5,6 +5,7 @@ from datetime import datetime
 
 import pytest
 from autogen_ext.agents.web_surfer import MultimodalWebSurfer
+
 from cogentic.llm.entra import get_model_client
 from cogentic.orchestration import CogenticGroupChat
 
@@ -23,11 +24,12 @@ async def test_cogentic_group_chat():
     team = CogenticGroupChat(
         participants=[assistant],
         model_client=orchestrator_model,
-        max_turns=10,
+        max_turns_total=32,
+        max_turns_per_hypothesis=8,
         max_stalls=3,
     )
 
-    response = await team.run(task="Why is grass green?")
+    response = await team.run(task="Why is grass green? Give me a simple answer.")
 
     assert response is not None
 
