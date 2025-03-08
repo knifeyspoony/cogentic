@@ -26,10 +26,14 @@ To answer this question we have assembled the following team:
 
 {team_description}
 
-Note that if you encounter repeated issues with a given team member, you should consider benching them when you next update your plan.
+### Collected Evidence
 
-### Facts
+Here is the evidence we have collected so far:
 
-Here is our fact sheet to consider:
+{evidence}
 
-{fact_sheet}
+### Issues
+
+Here is the list of issues we have encountered during our work:
+
+{issues}

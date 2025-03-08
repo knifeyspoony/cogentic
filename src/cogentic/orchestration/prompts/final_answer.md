@@ -10,17 +10,15 @@ Work has ended for the following question:
 
 ### Finish Reason
 
-Our work has concluded for the following reason: {finish_reason}
+Our work has concluded for the following reason: 
 
-### Fact Sheet
-
-Here is the fact sheet we developed while working on this question:
-
-{fact_sheet}
+```text
+{finish_reason}
+```
 
 ### Plan
 
-Here is the plan that we developed and worked on to try to answer the question:
+Here is the completed plan that we developed and worked on to try to answer the question:
 
 {plan}
 

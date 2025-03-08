@@ -41,6 +41,7 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
         self,
         participants: List[ChatAgent],
         model_client: ChatCompletionClient,
+        json_model_client: ChatCompletionClient | None = None,
         *,
         termination_condition: TerminationCondition | None = None,
         max_turns_total: int | None = 128,
@@ -62,6 +63,10 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
                 "At least one participant is required for CogenticGroupChat."
             )
         self._model_client = model_client
+        # JSON model client is used for getting a JSON-object out of a prompt
+        if json_model_client is None:
+            json_model_client = model_client
+        self._json_model_client = json_model_client
         self._max_stalls = max_stalls
         self._max_turns_per_hypothesis = max_turns_per_hypothesis
         self._max_turns_per_test = max_turns_per_test
@@ -82,6 +87,7 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
             participant_topic_types=participant_topic_types,
             participant_descriptions=participant_descriptions,
             model_client=self._model_client,
+            json_model_client=self._json_model_client,
             max_turns_total=max_turns,
             max_turns_per_hypothesis=self._max_turns_per_hypothesis,
             max_turns_per_test=self._max_turns_per_test,

@@ -39,25 +39,34 @@ from autogen_core.models import (
     AssistantMessage,
     ChatCompletionClient,
     LLMMessage,
+    SystemMessage,
     UserMessage,
 )
 
 from cogentic.orchestration.model_output import reason_and_output_model
-from cogentic.orchestration.models import (
-    CogenticFactSheet,
+from cogentic.orchestration.models.action import CogenticAction
+from cogentic.orchestration.models.evidence import CogenticInitialEvidence
+from cogentic.orchestration.models.hypothesis import CogenticInitialHypotheses
+from cogentic.orchestration.models.ledger import CogenticProgressLedger
+from cogentic.orchestration.models.orchestration import (
     CogenticFinalAnswer,
-    CogenticNextSpeaker,
-    CogenticPlan,
-    CogenticProgressLedger,
-    CogenticState,
+    CogenticHypothesisUpdate,
+    CogenticNextStep,
+    CogenticPlanUpdate,
 )
+from cogentic.orchestration.models.plan import CogenticPlan
+from cogentic.orchestration.models.state import CogenticState
 from cogentic.orchestration.prompts import (
+    create_current_state_prompt,
     create_final_answer_prompt,
-    create_hypothesis_prompt,
-    create_initial_fact_sheet_prompt,
-    create_initial_plan_prompt,
-    create_next_speaker_prompt,
+    create_initial_evidence_prompt,
+    create_initial_hypotheses_prompt,
+    create_next_step_prompt,
+    create_persona_prompt,
     create_progress_ledger_prompt,
+    create_summarize_result_prompt,
+    create_update_hypothesis_on_completion_prompt,
+    create_update_hypothesis_on_stall_prompt,
     create_update_plan_on_completion_prompt,
     create_update_plan_on_stall_prompt,
 )
@@ -73,6 +82,7 @@ class CogenticOrchestrator(BaseGroupChatManager):
         participant_topic_types: List[str],
         participant_descriptions: List[str],
         model_client: ChatCompletionClient,
+        json_model_client: ChatCompletionClient | None,
         max_turns_total: int | None,
         max_turns_per_hypothesis: int | None,
         max_turns_per_test: int | None,
@@ -97,13 +107,18 @@ class CogenticOrchestrator(BaseGroupChatManager):
         self._max_json_retries = 10
         self._question = ""
         self._plan: CogenticPlan | None = None
-        self._fact_sheet: CogenticFactSheet | None = None
-        self._current_ledger: CogenticProgressLedger | None = None
+        self._ledger: CogenticProgressLedger | None = None
+        self._active_step: CogenticNextStep | None = None
         self._total_turns: int = 0
         self._current_hypothesis_turns: int = 0
         self._current_test_turns: int = 0
         self._current_stall_count: int = 0
+        self._summarized_thread: List[AgentEvent | ChatMessage] = []
         self.logger = logging.getLogger(TRACE_LOGGER_NAME)
+        if json_model_client is None:
+            self._json_model_client = json_model_client or model_client
+        else:
+            self._json_model_client = json_model_client
 
         # Create a markdown table of our team members with Name and Description
         self._team_description = "| Name | Description |\n"
@@ -143,21 +158,6 @@ class CogenticOrchestrator(BaseGroupChatManager):
                 agent_response=Response(chat_message=message),
             ),
             topic_id=DefaultTopicId(type=self._group_topic_type),
-            cancellation_token=cancellation_token,
-        )
-
-    async def _request_speaker(
-        self, target_topic_id: str, cancellation_token: CancellationToken
-    ) -> None:
-        """Request a speaker to respond to the group chat.
-
-        Args:
-            target (str): The target speaker's topic ID.
-
-        """
-        await self.publish_message(
-            GroupChatRequestPublish(),
-            topic_id=DefaultTopicId(type=target_topic_id),
             cancellation_token=cancellation_token,
         )
 
@@ -207,7 +207,7 @@ class CogenticOrchestrator(BaseGroupChatManager):
 
         We initialize the group chat manager and set up the initial state.
 
-        - Create a fact sheet of facts presented in the task
+        - Gather initial evidence from the question itself
         - Create an initial plan containing hypotheses to be verified
         - Finish by selecting a hypothesis to process
 
@@ -222,32 +222,36 @@ class CogenticOrchestrator(BaseGroupChatManager):
             [content_to_str(msg.content) for msg in message.messages]
         )
 
-        # The planning conversation only exists to create a formal plan and fact sheet.
+        # The planning conversation only exists to create a formal plan based on the question.
         # It is not broadcast to the group chat.
         planning_conversation: List[LLMMessage] = []
 
-        # Ask the model to create a fact sheet of facts presented in the task/question
+        self._plan = CogenticPlan()
+
+        # Add our persona
+        planning_conversation.append(SystemMessage(content=create_persona_prompt()))
+
+        # Collect initial evidence from the question.
         planning_conversation.append(
             UserMessage(
-                content=create_initial_fact_sheet_prompt(self._question),
+                content=create_initial_evidence_prompt(self._question),
                 source=self._name,
             )
         )
-        self._fact_sheet = await reason_and_output_model(
+        initial_evidence = await reason_and_output_model(
             self._model_client,
+            self._json_model_client,
             self._get_compatible_context(planning_conversation),
             ctx.cancellation_token,
-            response_model=CogenticFactSheet,
+            response_model=CogenticInitialEvidence,
             retries=self._max_json_retries,
         )
-        assert isinstance(self._fact_sheet, CogenticFactSheet)
+        self._plan.evidence.extend(initial_evidence.evidence)
 
         # Add the fact sheet to the planning conversation
         planning_conversation.append(
             AssistantMessage(
-                content=self._fact_sheet.model_dump_markdown(
-                    title="Initial Fact Sheet"
-                ),
+                content=initial_evidence.model_dump_markdown(title="Initial Evidence"),
                 source=self._name,
             )
         )
@@ -255,21 +259,19 @@ class CogenticOrchestrator(BaseGroupChatManager):
         # Now, based on the question and the known facts, ask the model to create a plan
         planning_conversation.append(
             UserMessage(
-                content=create_initial_plan_prompt(self._team_description),
+                content=create_initial_hypotheses_prompt(self._team_description),
                 source=self._name,
             )
         )
-        self._plan = await reason_and_output_model(
+        initial_hypotheses = await reason_and_output_model(
             self._model_client,
+            self._json_model_client,
             self._get_compatible_context(planning_conversation),
             ctx.cancellation_token,
-            response_model=CogenticPlan,
+            response_model=CogenticInitialHypotheses,
             retries=self._max_json_retries,
         )
-        assert isinstance(self._plan, CogenticPlan)
-        # We save the plan internally, it isn't broadcast.
-
-        # Enter hypothesis processing
+        self._plan.hypotheses = initial_hypotheses.hypotheses
 
         await self._process_next_hypothesis(ctx.cancellation_token)
 
@@ -284,93 +286,43 @@ class CogenticOrchestrator(BaseGroupChatManager):
         """
         # Reset state
         await self._reset_state(cancellation_token)
-        assert self._plan and self._fact_sheet
-
-        # Validate that we have team members available
-        if self._plan.benched_team_members:
-            available_team_members = [
-                member
-                for member in self._participant_topic_types
-                if member not in self._plan.benched_team_members
-            ]
-            if not available_team_members:
-                await self._prepare_final_answer(
-                    "All team members have been benched due to errors.",
-                    cancellation_token,
-                )
-                return
-
-        # Choose the next unverified hypothesis. If our current hypothesis has no remaining tests
-        if (
-            self._plan.current_hypothesis
-            and self._plan.current_hypothesis.all_tests_finished
-        ):
-            if self._plan.current_hypothesis.all_tests_completed:
-                self._plan.current_hypothesis.state = "verified"
-            else:
-                self._plan.current_hypothesis.state = "unverifiable"
+        assert self._plan
 
         if not self._plan.current_hypothesis:
-            await self._prepare_final_answer(
-                "No remaining hypotheses to verify. This may indicate failure if we cannot come to a conclusion based on verified hypotheses (this is ok, failure is a real and frequent possibility).",
-                cancellation_token,
-            )
-            return
+            raise ValueError("No current hypothesis to process. This is unexpected.")
 
-        await self._initialize_orchestrator_message_thread()
-        await self._hypothesis_loop(
-            cancellation_token=cancellation_token, first_iteration=True
-        )
-
-    async def _initialize_orchestrator_message_thread(self):
-        """Initialize the orchestrator message thread with the current hypothesis."""
-        assert self._plan and self._fact_sheet and self._plan.current_hypothesis
+        # Clear the ledger
+        self._ledger = None
 
         # Clear the orchestrator message thread
         self._message_thread.clear()
+        self._summarized_thread.clear()
 
-        # Clear the ledger
-        self._current_ledger = None
+        # Add our persona to our thread
+        persona_message = TextMessage(content=create_persona_prompt(), source="system")
+        self._message_thread.append(persona_message)
 
-        # Introduce the current hypothesis
-        hypothesis_message = TextMessage(
-            content=create_hypothesis_prompt(
-                self._question,
-                self._team_description,
-                self._fact_sheet,
-                self._plan.current_hypothesis,
+        # Create the initial message for the group chat
+        current_state_message = TextMessage(
+            content=create_current_state_prompt(
+                question=self._question,
+                team_description=self._team_description,
+                plan=self._plan,
             ),
             source=self._name,
         )
-        self._message_thread.append(hypothesis_message)
+        # First message in any work thread is the state
+        self._message_thread.append(current_state_message)
+        self._summarized_thread.append(current_state_message)
 
         # Publish to the output and group
-        await self._publish_to_output(message=hypothesis_message)
-        await self._publish_to_group(message=hypothesis_message)
+        await self._publish_to_output(message=current_state_message)
+        await self._publish_to_group(message=current_state_message)
 
-    def _update_facts_in_thread(self):
-        """Update the facts in the message thread."""
-        assert self._fact_sheet and self._plan and self._plan.current_hypothesis
-        # We will replace the first message in the thread
-        hypothesis_message = TextMessage(
-            content=create_hypothesis_prompt(
-                self._question,
-                self._team_description,
-                self._fact_sheet,
-                self._plan.current_hypothesis,
-            ),
-            source=self._name,
+        # Start the hypothesis loop
+        await self._hypothesis_loop(
+            cancellation_token=cancellation_token, first_iteration=True
         )
-        self._message_thread[0] = hypothesis_message
-
-    async def _check_max_turns(self, cancellation_token: CancellationToken) -> None:
-        """Check if we have reached the maximum number of turns for the orchestrator."""
-        if self._max_turns is not None and self._total_turns > self._max_turns:
-            await self._prepare_final_answer(
-                f"Maximum turn count reached ({self._max_turns}). Can we come to a conclusion?",
-                cancellation_token,
-            )
-            return
 
     async def _hypothesis_loop(
         self, cancellation_token: CancellationToken, first_iteration=False
@@ -378,125 +330,130 @@ class CogenticOrchestrator(BaseGroupChatManager):
         """
         This is the work loop for the current hypothesis
         After each iteration, we update facts and current hypothesis data.
+
+        Args:
+            first_iteration (bool): Whether this is the first iteration of the loop (don't create ledger).
         """
         # Check if we have reached the maximum number of turns for the orchestrator.
-        await self._check_max_turns(cancellation_token)
-        self._total_turns += 1
-        self._current_hypothesis_turns += 1
-        self._current_test_turns += 1
-
-        # If this not our first iteration, we want to update the facts and plan
-        if not first_iteration:
-            self._current_ledger = await self._update_progress_ledger(
-                cancellation_token=cancellation_token
-            )
-
-            # Update the fact sheet, we might use it in the final answer prompt
-            assert self._plan and self._fact_sheet and self._plan.current_hypothesis
-
-            # Check if we have new facts to add to the fact sheet
-            if self._current_ledger.new_facts:
-                self._fact_sheet.facts.extend(self._current_ledger.new_facts)
-                self.logger.info(
-                    f"New facts added to the fact sheet: {self._current_ledger.new_facts}"
-                )
-                # To avoid confusion, we'll replace the fact sheet in the message thread
-                self._update_facts_in_thread()
-
-            # Check if we're done with the current hypothesis. If so, on to the next.
-            if self._current_ledger.current_test.state != "incomplete":
-                self._current_test_turns = 0
-                self.logger.info("Current test work complete.")
-
-                # Update the test in the current hypothesis
-                self._plan.current_hypothesis.update_test(
-                    self._current_ledger.current_test
-                )
-
-                # Check for task completion
-                if self._current_ledger.is_request_satisfied.answer:
-                    self.logger.info("Task completed, preparing final answer...")
-                    await self._prepare_final_answer(
-                        self._current_ledger.is_request_satisfied.reason,
-                        cancellation_token,
-                    )
-                    return
-                else:
-                    if self._plan.current_hypothesis.all_tests_finished:
-                        await self._update_plan_on_hypothesis_completion(
-                            cancellation_token=cancellation_token
-                        )
-
-                    await self._process_next_hypothesis(cancellation_token)
-                    return
-
-            # Check for stalling
-            if not self._current_ledger.is_progress_being_made.answer:
-                self._current_stall_count += 1
-            elif self._current_ledger.is_in_loop.answer:
-                self._current_stall_count += 1
-            else:
-                # Decrement stall count if we're making progress
-                self._current_stall_count = max(0, self._current_stall_count - 1)
-
-            # Re-plan on full stall or max hypothesis turns reached
-            if self._needs_replan():
-                self.logger.warning(
-                    "Stalled or hypothesis turn count exceeded, time to update the plan."
-                )
-                await self._update_plan_on_stall(cancellation_token)
-                await self._process_next_hypothesis(cancellation_token)
-                return
-
-        next_speaker = await self._select_next_speaker(cancellation_token)
-
-        if not next_speaker.next_speaker.answer:
-            await self._prepare_final_answer(
-                f"We can't make any further progress with the current team composition. Reason: {next_speaker.next_speaker.reason}",
+        if self._max_turns is not None and self._total_turns > self._max_turns:
+            await self._create_final_answer(
+                f"Maximum turn count reached ({self._max_turns}). Can we come to a conclusion?",
                 cancellation_token,
             )
             return
 
-        # Publish the next speaker message to the output topic and the group
-        message = TextMessage(
-            content=next_speaker.instruction_or_question.answer,
+        self._total_turns += 1
+        self._current_hypothesis_turns += 1
+        self._current_test_turns += 1
+
+        # We exit immediately on the first iteration - no need to create a progress ledger.
+        if first_iteration:
+            await self._execute_next_step(
+                cancellation_token=cancellation_token,
+            )
+            return
+
+        # Request an update to the ledger
+        self._ledger = await self._update_progress_ledger(
+            cancellation_token=cancellation_token
+        )
+
+        assert (
+            self._plan
+            and self._plan.current_hypothesis
+            and self._plan.current_hypothesis.current_test
+        )
+
+        current_test = self._plan.current_hypothesis.current_test
+
+        # Updates from the ledger
+        current_test.state = self._ledger.test_state.answer
+        self._plan.evidence.extend(self._ledger.new_test_evidence)
+        self._plan.issues.extend(self._ledger.new_issues)
+
+        # Check if we're totally done:
+        if self._ledger.original_question_answered.answer:
+            self.logger.info("Original question answered, preparing final answer...")
+            await self._create_final_answer(
+                self._ledger.original_question_answered.reason,
+                cancellation_token,
+            )
+            return
+
+        # Check if we're done the test/hypothesis
+        if self._ledger.test_state.answer != "incomplete":
+            self._current_test_turns = 0
+            self.logger.info("Current test work complete.")
+
+            # Replan on completed hypothesis
+            if self._plan.current_hypothesis.all_tests_finished:
+                return await self._replan(
+                    cancellation_token=cancellation_token, stalled=False
+                )
+
+        # Check for stalling
+        stalling = False
+        if not self._ledger.forward_progress.answer:
+            stalling = True
+            self._current_stall_count += 1
+        if self._ledger.stuck_in_loop.answer:
+            stalling = True
+            self._current_stall_count += 1
+
+        if not stalling:
+            # Decrement stall count if we're making progress
+            self._current_stall_count = max(0, self._current_stall_count - 1)
+
+        # Re-plan on full stall or max hypothesis turns reached
+        if self._needs_replan():
+            self.logger.warning(
+                "Stalled or hypothesis turn count exceeded, time to update the plan."
+            )
+            return await self._replan(cancellation_token, stalled=True)
+
+        # Keep going!
+        await self._execute_next_step(
+            cancellation_token=cancellation_token,
+            next_step=self._ledger.next_step,
+        )
+        return
+
+    async def _execute_next_step(
+        self,
+        cancellation_token: CancellationToken,
+        next_step: CogenticNextStep | None = None,
+    ) -> None:
+        """Continue working by executing the next step.
+
+        Args:
+            next_step (CogenticNextStep | None): The next step to execute. If None, a new step will be created.
+        """
+        if not next_step:
+            next_step = await self._create_next_step(cancellation_token)
+        # Save this so we can summarize the results later
+        self._active_step = next_step
+
+        # Create the next step message and send it out to the group
+        next_step_message = TextMessage(
+            content=next_step.instruction_or_question.answer,
             source=self._name,
         )
-        self._message_thread.append(message)
+        # Add it to our own internal conversation as well as our agents
+        self._message_thread.append(next_step_message)
+        self._summarized_thread.append(next_step_message)
 
         await self._publish_to_output(
-            message=message, cancellation_token=cancellation_token
+            message=next_step_message, cancellation_token=cancellation_token
         )
         await self._publish_to_group(
-            message=message, cancellation_token=cancellation_token
+            message=next_step_message, cancellation_token=cancellation_token
         )
 
         # Ask the next speaker to respond
-        await self._request_speaker(
-            target_topic_id=next_speaker.next_speaker.answer,
+        await self.publish_message(
+            GroupChatRequestPublish(),
+            topic_id=DefaultTopicId(type=next_step.next_speaker.answer),
             cancellation_token=cancellation_token,
-        )
-
-    async def _update_plan_on_hypothesis_completion(
-        self, cancellation_token: CancellationToken
-    ) -> None:
-        """Update the plan on hypothesis completion."""
-        assert self._plan and self._plan.current_hypothesis and self._fact_sheet
-        update_plan_prompt = create_update_plan_on_completion_prompt(
-            question=self._question,
-            current_hypothesis=self._plan.current_hypothesis,
-            team_description=self._team_description,
-            fact_sheet=self._fact_sheet,
-            plan=self._plan,
-        )
-        self._plan = await reason_and_output_model(
-            self._model_client,
-            self._get_compatible_context(
-                [UserMessage(content=update_plan_prompt, source=self._name)]
-            ),
-            cancellation_token=cancellation_token,
-            response_model=CogenticPlan,
-            retries=self._max_json_retries,
         )
 
     def _needs_replan(self) -> bool:
@@ -513,120 +470,165 @@ class CogenticOrchestrator(BaseGroupChatManager):
     async def _update_progress_ledger(
         self, cancellation_token: CancellationToken
     ) -> CogenticProgressLedger:
-        """Create the progress ledger based on the current state of the group chat.
+        """Update the progress ledger based on the current state of the group chat.
 
         Returns:
-            CogenticProgressLedger: The progress ledger containing updated facts and hypothesis info.
+            CogenticProgressLedger: An updated progress ledger for the current state of the group chat.
         """
-        assert (
-            self._plan
-            and self._plan.current_hypothesis
-            and self._plan.current_hypothesis.current_test
-        )
 
-        context = self._thread_to_context()
-
-        progress_ledger_prompt = create_progress_ledger_prompt(
-            self._plan.current_hypothesis.current_test, self._current_ledger
+        # Get the active conversation (this doesn't contain previous ledger updates, just instructions/results)
+        context = self._thread_to_context(self._summarized_thread)
+        ledger_type = CogenticProgressLedger.with_speakers(
+            choices=self._participant_topic_types
         )
+        progress_ledger_prompt = create_progress_ledger_prompt()
         context.append(UserMessage(content=progress_ledger_prompt, source=self._name))
-        assert self._max_json_retries > 0
-        progress_ledger: CogenticProgressLedger | None = None
         progress_ledger = await reason_and_output_model(
             self._model_client,
+            self._json_model_client,
             self._get_compatible_context(context),
             cancellation_token=cancellation_token,
-            response_model=CogenticProgressLedger,
+            response_model=ledger_type,
             retries=self._max_json_retries,
         )
-        assert isinstance(progress_ledger, CogenticProgressLedger)
         self.logger.debug(f"Progress Ledger: {progress_ledger}")
         return progress_ledger
 
-    async def _select_next_speaker(
+    async def _create_next_step(
         self, cancellation_token: CancellationToken
-    ) -> CogenticNextSpeaker:
-        """Select the next speaker"""
+    ) -> CogenticNextStep:
+        """Select the next step"""
         assert self._plan
-        context = self._thread_to_context()
 
-        # Create the next speaker prompt
-        next_speaker_type = CogenticNextSpeaker.with_choices(
-            choices=[
-                topic_type
-                for topic_type in self._participant_topic_types
-                if topic_type not in self._plan.benched_team_members
-            ]
+        # Next step selection is always done as part of a conversation
+        context = self._thread_to_context(self._summarized_thread)
+
+        # Create the next step prompt
+        next_step_type = CogenticNextStep.with_speaker_choices(
+            choices=self._participant_topic_types
         )
-        next_speaker_prompt = create_next_speaker_prompt(
+        next_step_prompt = create_next_step_prompt(
             names=self._participant_topic_types,
         )
-        context.append(UserMessage(content=next_speaker_prompt, source=self._name))
-        # Get the next speaker
-        next_speaker = await reason_and_output_model(
+        context.append(UserMessage(content=next_step_prompt, source=self._name))
+        # Get the next step
+        next_step = await reason_and_output_model(
             self._model_client,
+            self._json_model_client,
             self._get_compatible_context(context),
             cancellation_token=cancellation_token,
-            response_model=next_speaker_type,
+            response_model=next_step_type,
             retries=self._max_json_retries,
         )
-        assert isinstance(next_speaker, CogenticNextSpeaker)
-        self.logger.debug(f"Next Speaker: {next_speaker}")
+        self.logger.debug(f"Next Step: {next_step}")
 
-        return next_speaker
+        return next_step
 
-    async def _update_plan_on_stall(
-        self, cancellation_token: CancellationToken
+    async def _replan(
+        self, cancellation_token: CancellationToken, stalled=False
     ) -> None:
-        """Update the facts and plan based on the current state."""
+        """Update our plan according to the current state of the group chat.
+        Args:
+            stalled (bool): Whether we are doing this because we're stalled.
+        """
+        assert self._plan and self._plan.current_hypothesis
 
-        assert self._plan and self._plan.current_hypothesis and self._fact_sheet
-
-        update_plan_prompt = create_update_plan_on_stall_prompt(
+        persona = create_persona_prompt()
+        current_state = create_current_state_prompt(
             question=self._question,
-            current_hypothesis=self._plan.current_hypothesis,
             team_description=self._team_description,
-            fact_sheet=self._fact_sheet,
             plan=self._plan,
         )
+        if stalled:
+            update_hypothesis_prompt = create_update_hypothesis_on_stall_prompt()
+            plan_update_prompt = create_update_plan_on_stall_prompt()
+        else:
+            update_hypothesis_prompt = create_update_hypothesis_on_completion_prompt()
+            plan_update_prompt = create_update_plan_on_completion_prompt()
 
-        self._plan = await reason_and_output_model(
+        messages = [
+            SystemMessage(content=persona),
+            UserMessage(content=current_state, source=self._name),
+            UserMessage(content=update_hypothesis_prompt, source=self._name),
+        ]
+
+        hypothesis_update = await reason_and_output_model(
             self._model_client,
-            self._get_compatible_context(
-                [UserMessage(content=update_plan_prompt, source=self._name)]
-            ),
+            self._json_model_client,
+            self._get_compatible_context(messages),
             cancellation_token=cancellation_token,
-            response_model=CogenticPlan,
+            response_model=CogenticHypothesisUpdate,
             retries=self._max_json_retries,
         )
-        assert isinstance(self._plan, CogenticPlan)
+        # Add new tests to the hypothesis.
+        self._plan.current_hypothesis.tests.extend(hypothesis_update.new_tests)
+        # Update the state of the hypothesis.
+        # NOTE: if this sets the hypothesis to anything but unverified it will change future results of self._plan.current_hypothesis!
+        self._plan.current_hypothesis.state = hypothesis_update.hypothesis_state.answer
 
-    async def _prepare_final_answer(
+        # We won't update the plan if we aren't stalled and there's work left to do
+        if not stalled and self._plan.current_hypothesis:
+            return await self._process_next_hypothesis(cancellation_token)
+
+        # Otherwise, we need to update the plan
+        messages = [
+            SystemMessage(content=persona),
+            UserMessage(content=current_state, source=self._name),
+            UserMessage(content=plan_update_prompt, source=self._name),
+        ]
+
+        # Get the plan update
+        plan_update = await reason_and_output_model(
+            self._model_client,
+            self._json_model_client,
+            self._get_compatible_context(messages),
+            cancellation_token=cancellation_token,
+            response_model=CogenticPlanUpdate,
+            retries=self._max_json_retries,
+        )
+        # Update the plan state
+        self._plan.state = plan_update.plan_state.answer
+        if self._plan.state != "in_progress":
+            # If the plan is complete, we need to prepare the final answer
+            self.logger.info("Plan complete, preparing final answer...")
+            await self._create_final_answer(
+                "No work remaining. This could mean success or failure depending on the results",
+                cancellation_token,
+            )
+            return
+        else:
+            # Add new hypotheses to the plan
+            self._plan.hypotheses.extend(plan_update.new_hypotheses)
+            self.logger.info("Plan still in progress, selecting next hypothesis...")
+            return await self._process_next_hypothesis(cancellation_token)
+
+    async def _create_final_answer(
         self, reason: str, cancellation_token: CancellationToken
     ) -> None:
         """Prepare the final answer for the task."""
 
-        assert self._fact_sheet and self._plan
+        assert self._plan
 
-        # Get the final answer
+        # Create the final answer prompt
+        persona = create_persona_prompt()
         final_answer_prompt = create_final_answer_prompt(
             question=self._question,
             finish_reason=reason,
-            fact_sheet=self._fact_sheet,
             plan=self._plan,
         )
-        messages: list[LLMMessage] = [
-            UserMessage(content=final_answer_prompt, source=self._name)
+        messages = [
+            SystemMessage(content=persona),
+            UserMessage(content=final_answer_prompt, source=self._name),
         ]
 
         final_answer = await reason_and_output_model(
             self._model_client,
-            messages=messages,
+            self._json_model_client,
+            messages=self._get_compatible_context(messages),
             cancellation_token=cancellation_token,
             response_model=CogenticFinalAnswer,
             retries=self._max_json_retries,
         )
-        assert isinstance(final_answer, CogenticFinalAnswer)
 
         message = TextMessage(
             content=final_answer.model_dump_markdown(), source=self._name
@@ -654,15 +656,68 @@ class CogenticOrchestrator(BaseGroupChatManager):
         self, message: GroupChatAgentResponse, ctx: MessageContext
     ) -> None:
         """Handle the response from an agent in our group chat."""
-        # Add this message to our ongoing hypothesis work thread
+        # Add this message to our ongoing work thread
         self._message_thread.append(message.agent_response.chat_message)
+        # Summarize what happened for our plan history
+        await self._summarize_action(
+            message.agent_response.chat_message, ctx.cancellation_token
+        )
         # Continue the work loop
         await self._hypothesis_loop(ctx.cancellation_token)
 
-    def _thread_to_context(self) -> List[LLMMessage]:
+    async def _summarize_action(
+        self, message: ChatMessage, cancellation_token: CancellationToken
+    ):
+        """Summarize the action we just took
+
+        Args:
+            message (GroupChatAgentResponse): The response from the agent.
+            cancellation_token (CancellationToken): The cancellation token for the operation.
+
+        """
+        if not isinstance(message.content, str):
+            return
+
+        assert self._active_step
+        assert self._plan
+        assert self._plan.current_hypothesis
+        assert self._plan.current_hypothesis.current_test
+
+        # Get the action summary
+        action_summary_prompt = create_summarize_result_prompt(
+            response=message.content,
+        )
+        action_summary_response = await self._model_client.create(
+            messages=[
+                UserMessage(content=action_summary_prompt, source=self._name),
+            ],
+            cancellation_token=cancellation_token,
+        )
+        assert isinstance(action_summary_response.content, str)
+        action_summary = action_summary_response.content
+        # Create the action
+        action = CogenticAction(
+            goal=self._active_step.goal.answer,
+            team_member_name=self._active_step.next_speaker.answer,
+            test_name=self._plan.current_hypothesis.current_test.name,
+            outcome=action_summary,
+        )
+        # Add the action to the plan
+        self._plan.actions.append(action)
+        # Store the result in our summarized thread:
+        self._summarized_thread.append(
+            TextMessage(
+                content=action_summary,
+                source=self._active_step.next_speaker.answer,
+            )
+        )
+
+    def _thread_to_context(
+        self, thread: list[AgentEvent | ChatMessage]
+    ) -> List[LLMMessage]:
         """Convert the message thread to a context for the model."""
         context: List[LLMMessage] = []
-        for m in self._message_thread:
+        for m in thread:
             if isinstance(m, ToolCallRequestEvent | ToolCallExecutionEvent):
                 # Ignore tool call messages.
                 continue
@@ -693,10 +748,9 @@ class CogenticOrchestrator(BaseGroupChatManager):
             message_thread=list(self._message_thread),
             current_turn=self._current_turn,
             question=self._question,
-            fact_sheet=self._fact_sheet,
             plan=self._plan,
-            n_rounds=self._total_turns,
-            n_stalls=self._current_stall_count,
+            total_turns=self._total_turns,
+            stalls=self._current_stall_count,
         )
         return state.model_dump()
 
@@ -705,11 +759,9 @@ class CogenticOrchestrator(BaseGroupChatManager):
         self._message_thread = orchestrator_state.message_thread
         self._current_turn = orchestrator_state.current_turn
         self._question = orchestrator_state.question
-        self._fact_sheet = orchestrator_state.fact_sheet
         self._plan = orchestrator_state.plan
-        self._current_ledger = orchestrator_state.current_ledger
-        self._total_turns = orchestrator_state.n_rounds
-        self._current_stall_count = orchestrator_state.n_stalls
+        self._total_turns = orchestrator_state.total_turns
+        self._current_stall_count = orchestrator_state.stalls
 
     async def select_speaker(self, thread: List[AgentEvent | ChatMessage]) -> str:
         """Not used in this orchestrator, we select next speaker in _orchestrate_step."""
@@ -721,8 +773,7 @@ class CogenticOrchestrator(BaseGroupChatManager):
         self._total_turns = 0
         self._current_stall_count = 0
         self._question = ""
-        self._fact_sheet = None
         self._plan = None
-        self._current_ledger = None
+        self._ledger = None
         self._current_hypothesis_turns = 0
         self._current_test_turns = 0

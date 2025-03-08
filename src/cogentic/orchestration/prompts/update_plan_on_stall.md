@@ -1,44 +1,18 @@
 ## Plan Update
 
-We aren't making as much progress as we would like, and so we may need to revise our plan.
+- We have just updated a hypothesis due to a stall in progress.
+- This is an opportunity to update the state of the plan based on our results.
 
-### Root Cause
+### Updating or Completing the Plan
 
-Consider what went wrong on this last run (the root cause of the failure) and adjust the plan accordingly.
+Based on the results thus far, you need to update the state of the plan. You can either:
+- Mark the plan as `complete` if the existing hypothesis results can answer the initial question(s) we set out to answer.
+- Mark the plan as `failed` if we are unable to answer the initial question(s) and the current team composition or team member failures prevent us from continuing our work.
+  - Here, you should consider whether any remaining unverified hypotheses can still be tested given our current state.
+- Mark the plan as `in_progress` if we're not ready to answer the initial question(s) yet, but you still believe that progress can be made. In this case, you will need to add additional hypotheses to the plan.
 
-### Updating or Completing the Hypothesis
+### Tips
 
-If, based on the current facts and test results, you believe that our work on the current hypothesis is complete (or that it cannot be completed), please mark the state accordingly. We want to be rigorous, but not impossibly pedantic; if the test results give you a moderate amount of confidence in the hypothesis, you can mark it as verified.
-
-#### State of the Hypothesis
-
-You may need to change the state of the hypothesis. Here are the possible states:
-
-- unverified: the hypothesis has not been verified and you are adding new, viable tests to continue our work
-- verified: the hypothesis has been verified based on the test results and you are marking it as complete
-- unverifiable: the hypothesis cannot be verified due to the current team composition or team member failures
-
-#### Updating Tests
-
-- If you are leaving the current hypothesis as unverified, you must add some additional tests that can be completed by our team members to continue our work.
-- If you are abandoning the hypothesis, leave the tests in the abandoned hypothesis as they are so we can review the results later.
-
-### Updating the Plan
-
-In completing our work, we may have learned something new. If so, consider modifying our plan to adjust accordingly e.g., if:
-
-- We learned that a certain approach is not feasible, we may want to remove related work from our plan.
-- We learned that a certain approach is feasible, we may want to add related work to our plan and remove any work that is no longer needed.
-- New facts have come to light as a result of our work, we may want to update our plan accordingly.
-
-We don't want to remove hypotheses from the plan - if we don't plan to continue work on a hypothesis, just mark it accordingly and potentially create new ones.
-
-#### Plan Tips
-
-- We can't interact with the physical world, and you're basically limited to whatever functionality your team members have. Keep this in mind when you design hypotheses and tests.
-
-### Previous Plan
-
-Here is the old plan:
-
-{plan}
+- We can't interact with the physical world, and you're basically limited to whatever functionality your team members have. Keep this in mind when you are adding new hypotheses.
+- Be sure to consider your team member's descriptions. Unless explicitly mentioned, they cannot perform arbitrary tasks and are limited to the functionality provided in their descriptions.
+- If any of your new hypotheses required functionality not obviously available to your team members, you should fail the plan.
