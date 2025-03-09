@@ -2,9 +2,11 @@
 
 ### Question
 
-Here is the question we will set out to answer.
+Here is the question we will set out to answer:
 
+```text
 {question}
+```
 
 ### Initial Evidence
 

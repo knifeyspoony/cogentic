@@ -10,9 +10,7 @@ from pydantic import BaseModel
 from typing_extensions import Self
 
 from cogentic.orchestration.orchestrator import CogenticOrchestrator
-from cogentic.orchestration.prompts.prompts import (
-    FINAL_ANSWER_PROMPT as RIGOROUS_FINAL_ANSWER_PROMPT,
-)
+from cogentic.orchestration.prompts.prompts import FINAL_ANSWER_PROMPT
 
 trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
 event_logger = logging.getLogger(EVENT_LOGGER_NAME)
@@ -43,17 +41,29 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
         model_client: ChatCompletionClient,
         json_model_client: ChatCompletionClient | None = None,
         *,
-        termination_condition: TerminationCondition | None = None,
         max_turns_total: int | None = 128,
         max_turns_per_hypothesis: int | None = 32,
         max_turns_per_test: int | None = 8,
         max_stalls: int = 3,
-        final_answer_prompt: str = RIGOROUS_FINAL_ANSWER_PROMPT,
+        final_answer_prompt: str = FINAL_ANSWER_PROMPT,
     ):
+        """Initialize the CogenticGroupChat.
+
+        Args:
+
+            participants (List[ChatAgent]): The participants in the group chat.
+            model_client (ChatCompletionClient): The model client to use for orchestration.
+            json_model_client (ChatCompletionClient | None): The model client to use for JSON response type generation. Defaults to None, in which case model_client is used.
+            max_turns_total (int | None): The maximum number of turns for the group chat. Defaults to 128.
+            max_turns_per_hypothesis (int | None): The maximum number of turns per hypothesis. Defaults to 32.
+            max_turns_per_test (int | None): The maximum number of turns per test. Defaults to 8.
+            max_stalls (int): The maximum number of stalls before the group chat is terminated. Defaults to 3.
+            final_answer_prompt (str): The prompt to use for the final answer. Defaults to FINAL_ANSWER_PROMPT.
+        """
         super().__init__(
             participants,
             group_chat_manager_class=CogenticOrchestrator,
-            termination_condition=termination_condition,
+            termination_condition=None,
             max_turns=max_turns_total,
         )
 
@@ -120,15 +130,9 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
             ChatAgent.load_component(participant) for participant in config.participants
         ]
         model_client = ChatCompletionClient.load_component(config.model_client)
-        termination_condition = (
-            TerminationCondition.load_component(config.termination_condition)
-            if config.termination_condition
-            else None
-        )
         return cls(
             participants,
             model_client,
-            termination_condition=termination_condition,
             max_turns_total=config.max_turns_total,
             max_turns_per_hypothesis=config.max_turns_per_hypothesis,
             max_turns_per_test=config.max_turns_per_test,

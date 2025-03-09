@@ -88,6 +88,7 @@ class CogenticOrchestrator(BaseGroupChatManager):
         max_turns_per_test: int | None,
         max_stalls: int,
         final_answer_prompt: str,
+        use_summarized_thread: bool = True,
     ):
         super().__init__(
             group_topic_type=group_topic_type,
@@ -114,6 +115,7 @@ class CogenticOrchestrator(BaseGroupChatManager):
         self._current_test_turns: int = 0
         self._current_stall_count: int = 0
         self._summarized_thread: List[AgentEvent | ChatMessage] = []
+        self._use_summarized_thread = use_summarized_thread
         self.logger = logging.getLogger(TRACE_LOGGER_NAME)
         if json_model_client is None:
             self._json_model_client = json_model_client or model_client
@@ -301,6 +303,7 @@ class CogenticOrchestrator(BaseGroupChatManager):
         # Add our persona to our thread
         persona_message = TextMessage(content=create_persona_prompt(), source="system")
         self._message_thread.append(persona_message)
+        self._summarized_thread.append(persona_message)
 
         # Create the initial message for the group chat
         current_state_message = TextMessage(
@@ -348,31 +351,29 @@ class CogenticOrchestrator(BaseGroupChatManager):
 
         # We exit immediately on the first iteration - no need to create a progress ledger.
         if first_iteration:
-            await self._execute_next_step(
+            return await self._execute_next_step(
                 cancellation_token=cancellation_token,
             )
-            return
 
         # Request an update to the ledger
         self._ledger = await self._update_progress_ledger(
             cancellation_token=cancellation_token
         )
 
-        assert (
-            self._plan
-            and self._plan.current_hypothesis
-            and self._plan.current_hypothesis.current_test
-        )
+        assert self._plan and self._plan.current_hypothesis
 
-        current_test = self._plan.current_hypothesis.current_test
+        current_hypothesis = self._plan.current_hypothesis
+        assert current_hypothesis.current_test
 
         # Updates from the ledger
-        current_test.state = self._ledger.test_state.answer
+        current_hypothesis.current_test.state = self._ledger.test_state.answer
         self._plan.evidence.extend(self._ledger.new_test_evidence)
         self._plan.issues.extend(self._ledger.new_issues)
 
         # Check if we're totally done:
         if self._ledger.original_question_answered.answer:
+            # If we're marking the question as answered, the current hypothesis has been validated
+            current_hypothesis.state = "verified"
             self.logger.info("Original question answered, preparing final answer...")
             await self._create_final_answer(
                 self._ledger.original_question_answered.reason,
@@ -477,7 +478,10 @@ class CogenticOrchestrator(BaseGroupChatManager):
         """
 
         # Get the active conversation (this doesn't contain previous ledger updates, just instructions/results)
-        context = self._thread_to_context(self._summarized_thread)
+        if self._use_summarized_thread:
+            context = self._thread_to_context(self._summarized_thread)
+        else:
+            context = self._thread_to_context(self._message_thread)
         ledger_type = CogenticProgressLedger.with_speakers(
             choices=self._participant_topic_types
         )
@@ -634,6 +638,7 @@ class CogenticOrchestrator(BaseGroupChatManager):
             content=final_answer.model_dump_markdown(), source=self._name
         )
         self._message_thread.append(message)
+        self._summarized_thread.append(message)
 
         # Publish the response message
         await self._publish_to_output(
@@ -662,7 +667,6 @@ class CogenticOrchestrator(BaseGroupChatManager):
         await self._summarize_action(
             message.agent_response.chat_message, ctx.cancellation_token
         )
-        # Continue the work loop
         await self._hypothesis_loop(ctx.cancellation_token)
 
     async def _summarize_action(
@@ -675,8 +679,9 @@ class CogenticOrchestrator(BaseGroupChatManager):
             cancellation_token (CancellationToken): The cancellation token for the operation.
 
         """
-        if not isinstance(message.content, str):
-            return
+
+        # Join the content into a single string
+        content_str = content_to_str(message.content)
 
         assert self._active_step
         assert self._plan
@@ -685,9 +690,9 @@ class CogenticOrchestrator(BaseGroupChatManager):
 
         # Get the action summary
         action_summary_prompt = create_summarize_result_prompt(
-            response=message.content,
+            response=content_str,
         )
-        action_summary_response = await self._model_client.create(
+        action_summary_response = await self._json_model_client.create(
             messages=[
                 UserMessage(content=action_summary_prompt, source=self._name),
             ],

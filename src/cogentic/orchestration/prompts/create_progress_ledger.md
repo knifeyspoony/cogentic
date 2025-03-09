@@ -14,3 +14,8 @@ To make progress on answering the question, please answer the following question
   - Have we discovered any new evidence that is relevant to our current hypothesis (or the original question)? If so, we want to record this in the ledger.
 - Finally, what are our next instructions, and who should we assign them to?
 
+### Considerations
+
+- If we have an answer to the original question, but all that remains is to consolidate our findings, then we should consider our work complete. This work will be done after the plan is completed, you don't need to worry about it.
+
+
