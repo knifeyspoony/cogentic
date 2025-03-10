@@ -88,7 +88,7 @@ class CogenticOrchestrator(BaseGroupChatManager):
         max_turns_per_test: int | None,
         max_stalls: int,
         final_answer_prompt: str,
-        use_summarized_thread: bool = True,
+        use_summarized_context: bool = False,
     ):
         super().__init__(
             group_topic_type=group_topic_type,
@@ -115,7 +115,7 @@ class CogenticOrchestrator(BaseGroupChatManager):
         self._current_test_turns: int = 0
         self._current_stall_count: int = 0
         self._summarized_thread: List[AgentEvent | ChatMessage] = []
-        self._use_summarized_thread = use_summarized_thread
+        self._use_summarized_context = use_summarized_context
         self.logger = logging.getLogger(TRACE_LOGGER_NAME)
         if json_model_client is None:
             self._json_model_client = json_model_client or model_client
@@ -484,7 +484,7 @@ class CogenticOrchestrator(BaseGroupChatManager):
         """
 
         # Get the active conversation (this doesn't contain previous ledger updates, just instructions/results)
-        if self._use_summarized_thread:
+        if self._use_summarized_context:
             context = self._thread_to_context(self._summarized_thread)
         else:
             context = self._thread_to_context(self._message_thread)

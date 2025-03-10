@@ -46,6 +46,7 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
         max_turns_per_test: int | None = 8,
         max_stalls: int = 3,
         final_answer_prompt: str = FINAL_ANSWER_PROMPT,
+        use_summarized_context: bool = False,
     ):
         """Initialize the CogenticGroupChat.
 
@@ -59,6 +60,7 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
             max_turns_per_test (int | None): The maximum number of turns per test. Defaults to 8.
             max_stalls (int): The maximum number of stalls before the group chat is terminated. Defaults to 3.
             final_answer_prompt (str): The prompt to use for the final answer. Defaults to FINAL_ANSWER_PROMPT.
+            use_summarized_context (bool): Whether to summarize agent actions using another LLM prompt. Defaults to False.
         """
         super().__init__(
             participants,
@@ -81,6 +83,7 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
         self._max_turns_per_hypothesis = max_turns_per_hypothesis
         self._max_turns_per_test = max_turns_per_test
         self._final_answer_prompt = final_answer_prompt
+        self._use_summarized_context = use_summarized_context
 
     def _create_group_chat_manager_factory(
         self,
@@ -103,6 +106,7 @@ class CogenticGroupChat(BaseGroupChat, Component[CogenticGroupChatConfig]):
             max_turns_per_test=self._max_turns_per_test,
             max_stalls=self._max_stalls,
             final_answer_prompt=self._final_answer_prompt,
+            use_summarized_context=self._use_summarized_context,
         )
 
     def _to_config(self) -> CogenticGroupChatConfig:
