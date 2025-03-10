@@ -7,10 +7,10 @@ from cogentic.orchestration.prompts.prompts import (
     create_persona_prompt,
     create_progress_ledger_prompt,
     create_summarize_result_prompt,
-    create_update_hypothesis_on_completion_prompt,
     create_update_hypothesis_on_stall_prompt,
-    create_update_plan_on_completion_prompt,
+    create_update_hypothesis_prompt,
     create_update_plan_on_stall_prompt,
+    create_update_plan_prompt,
 )
 
 __all__ = [
@@ -22,8 +22,8 @@ __all__ = [
     "create_summarize_result_prompt",
     "create_persona_prompt",
     "create_progress_ledger_prompt",
-    "create_update_hypothesis_on_completion_prompt",
+    "create_update_hypothesis_prompt",
     "create_update_hypothesis_on_stall_prompt",
-    "create_update_plan_on_completion_prompt",
+    "create_update_plan_prompt",
     "create_update_plan_on_stall_prompt",
 ]

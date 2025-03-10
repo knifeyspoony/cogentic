@@ -50,3 +50,14 @@ class CogenticPlan(CogenticBaseModel):
             if hypothesis.state == "unverified":
                 return hypothesis
         return None
+
+    def insert_hypotheses(
+        self, to_insert: CogenticHypothesis | list[CogenticHypothesis]
+    ) -> None:
+        """Insert a hypothesis into the plan in front of our current hypothesis."""
+        new_hypotheses = to_insert if isinstance(to_insert, list) else [to_insert]
+        if self.current_hypothesis:
+            index = self.hypotheses.index(self.current_hypothesis)
+            self.hypotheses[index:index] = new_hypotheses
+        else:
+            self.hypotheses.extend(new_hypotheses)

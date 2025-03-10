@@ -65,10 +65,10 @@ from cogentic.orchestration.prompts import (
     create_persona_prompt,
     create_progress_ledger_prompt,
     create_summarize_result_prompt,
-    create_update_hypothesis_on_completion_prompt,
     create_update_hypothesis_on_stall_prompt,
-    create_update_plan_on_completion_prompt,
+    create_update_hypothesis_prompt,
     create_update_plan_on_stall_prompt,
+    create_update_plan_prompt,
 )
 
 
@@ -381,6 +381,11 @@ class CogenticOrchestrator(BaseGroupChatManager):
             )
             return
 
+        # Check if we need to replan
+        if self._ledger.replan_needed.answer:
+            self.logger.info("Replan requested, updating the plan...")
+            return await self._replan(cancellation_token, stalled=False, requested=True)
+
         # Check if we're done the test/hypothesis
         if self._ledger.test_state.answer != "incomplete":
             self._current_test_turns = 0
@@ -431,6 +436,7 @@ class CogenticOrchestrator(BaseGroupChatManager):
         """
         if not next_step:
             next_step = await self._create_next_step(cancellation_token)
+
         # Save this so we can summarize the results later
         self._active_step = next_step
 
@@ -529,7 +535,7 @@ class CogenticOrchestrator(BaseGroupChatManager):
         return next_step
 
     async def _replan(
-        self, cancellation_token: CancellationToken, stalled=False
+        self, cancellation_token: CancellationToken, stalled=False, requested=False
     ) -> None:
         """Update our plan according to the current state of the group chat.
         Args:
@@ -547,8 +553,8 @@ class CogenticOrchestrator(BaseGroupChatManager):
             update_hypothesis_prompt = create_update_hypothesis_on_stall_prompt()
             plan_update_prompt = create_update_plan_on_stall_prompt()
         else:
-            update_hypothesis_prompt = create_update_hypothesis_on_completion_prompt()
-            plan_update_prompt = create_update_plan_on_completion_prompt()
+            update_hypothesis_prompt = create_update_hypothesis_prompt()
+            plan_update_prompt = create_update_plan_prompt()
 
         messages = [
             SystemMessage(content=persona),
@@ -564,14 +570,14 @@ class CogenticOrchestrator(BaseGroupChatManager):
             response_model=CogenticHypothesisUpdate,
             retries=self._max_json_retries,
         )
-        # Add new tests to the hypothesis.
-        self._plan.current_hypothesis.tests.extend(hypothesis_update.new_tests)
+        # Add new tests to the hypothesis
+        self._plan.current_hypothesis.insert_tests(hypothesis_update.new_tests)
         # Update the state of the hypothesis.
         # NOTE: if this sets the hypothesis to anything but unverified it will change future results of self._plan.current_hypothesis!
         self._plan.current_hypothesis.state = hypothesis_update.hypothesis_state.answer
 
-        # We won't update the plan if we aren't stalled and there's work left to do
-        if not stalled and self._plan.current_hypothesis:
+        # We won't update the plan if we aren't stalled, we didn't ask for a replan, and there's work left to do
+        if not stalled and not requested and self._plan.current_hypothesis:
             return await self._process_next_hypothesis(cancellation_token)
 
         # Otherwise, we need to update the plan
@@ -601,8 +607,8 @@ class CogenticOrchestrator(BaseGroupChatManager):
             )
             return
         else:
-            # Add new hypotheses to the plan
-            self._plan.hypotheses.extend(plan_update.new_hypotheses)
+            # Insert new hypotheses to the plan
+            self._plan.insert_hypotheses(plan_update.new_hypotheses)
             self.logger.info("Plan still in progress, selecting next hypothesis...")
             return await self._process_next_hypothesis(cancellation_token)
 

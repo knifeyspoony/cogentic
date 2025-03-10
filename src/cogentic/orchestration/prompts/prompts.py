@@ -84,33 +84,29 @@ def create_final_answer_prompt(
     )
 
 
+UPDATE_HYPOTHESIS_PATH = PROMPTS_DIR / "update_hypothesis.md"
+UPDATE_HYPOTHESIS_PROMPT = UPDATE_HYPOTHESIS_PATH.read_text()
+
+
+def create_update_hypothesis_prompt() -> str:
+    return UPDATE_HYPOTHESIS_PROMPT
+
+
+UPDATE_PLAN_PATH = PROMPTS_DIR / "update_plan.md"
+UPDATE_PLAN_PROMPT = UPDATE_PLAN_PATH.read_text()
+
+
+def create_update_plan_prompt() -> str:
+    """Update the plan when we have completed work on a hypothesis."""
+    return UPDATE_PLAN_PROMPT
+
+
 UPDATE_HYPOTHESIS_ON_STALL_PROMPT_PATH = PROMPTS_DIR / "update_hypothesis_on_stall.md"
 UPDATE_HYPOTHESIS_ON_STALL_PROMPT = UPDATE_HYPOTHESIS_ON_STALL_PROMPT_PATH.read_text()
 
 
 def create_update_hypothesis_on_stall_prompt() -> str:
     return UPDATE_HYPOTHESIS_ON_STALL_PROMPT
-
-
-UPDATE_HYPOTHESIS_ON_COMPLETION_PROMPT_PATH = (
-    PROMPTS_DIR / "update_hypothesis_on_completion.md"
-)
-UPDATE_HYPOTHESIS_ON_COMPLETION_PROMPT = (
-    UPDATE_HYPOTHESIS_ON_COMPLETION_PROMPT_PATH.read_text()
-)
-
-
-def create_update_hypothesis_on_completion_prompt() -> str:
-    return UPDATE_HYPOTHESIS_ON_COMPLETION_PROMPT
-
-
-UPDATE_PLAN_ON_COMPLETION_PROMPT_PATH = PROMPTS_DIR / "update_plan_on_completion.md"
-UPDATE_PLAN_ON_COMPLETION_PROMPT = UPDATE_PLAN_ON_COMPLETION_PROMPT_PATH.read_text()
-
-
-def create_update_plan_on_completion_prompt() -> str:
-    """Update the plan when we have completed work on a hypothesis."""
-    return UPDATE_PLAN_ON_COMPLETION_PROMPT
 
 
 UPDATE_PLAN_ON_STALL_PROMPT_PATH = PROMPTS_DIR / "update_plan_on_stall.md"

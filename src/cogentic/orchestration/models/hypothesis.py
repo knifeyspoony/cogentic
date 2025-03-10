@@ -45,6 +45,15 @@ class CogenticHypothesis(CogenticBaseModel):
                 return test
         return None
 
+    def insert_tests(self, to_insert: CogenticTest | list[CogenticTest]) -> None:
+        """Insert test(s) into the hypothesis in front of our current test."""
+        new_tests = to_insert if isinstance(to_insert, list) else [to_insert]
+        if self.current_test:
+            index = self.tests.index(self.current_test)
+            self.tests[index:index] = new_tests
+        else:
+            self.tests.extend(new_tests)
+
 
 class CogenticInitialHypotheses(CogenticBaseModel):
     """Initial hypotheses for the cogentic system."""
